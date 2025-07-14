@@ -1,0 +1,255 @@
+import { Router, Request, Response } from 'express'
+import multer, { StorageEngine } from 'multer'
+import { PrismaClient } from '@prisma/client'
+import path from 'path'
+import fs from 'fs'
+
+const router: Router = Router()
+const prisma = new PrismaClient()
+const UPLOADS_DIR = path.join(__dirname, '../../uploads')
+
+// Ensure uploads directory exists
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true })
+}
+
+// Set up multer storage
+const storage: StorageEngine = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, UPLOADS_DIR)
+  },
+  filename: (req, file, cb) => {
+    cb(null, file.originalname)
+  },
+})
+const upload = multer({ storage })
+
+// Helper: Remove file from disk
+function removeFile(filePath: string) {
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath)
+    }
+  } catch (err) {
+    // Ignore
+  }
+}
+
+// Helper: Remove folder recursively
+function removeFolder(folderPath: string) {
+  try {
+    if (fs.existsSync(folderPath)) {
+      fs.rmSync(folderPath, { recursive: true, force: true })
+    }
+  } catch (err) {
+    // Ignore
+  }
+}
+
+// Upload files/folders (multi-class support, overwrite, folder hierarchy)
+router.post('/upload', upload.any(), async (req: Request, res: Response) => {
+  try {
+    // Expect: req.body.classIds (comma-separated), req.body.folderPath (optional for folders)
+    // req.files: array of files (multer)
+    const { classIds, folderPath } = req.body
+    const classIdArr = classIds ? classIds.split(',') : []
+    const userId = req.body.userId || 'unknown' // In real app, get from session/JWT
+    if (!req.files || classIdArr.length === 0) {
+      return res.status(400).json({ success: false, error: 'Files and classIds are required' })
+    }
+    const files = req.files as Express.Multer.File[]
+    const results = []
+    for (const file of files) {
+      // Overwrite logic: for each class, if file with same name exists in same folder, remove old file and metadata
+      for (const courseId of classIdArr) {
+        const existing = await prisma.file.findFirst({
+          where: {
+            filename: file.originalname,
+            courses: { some: { id: courseId } },
+            path: folderPath || '',
+          },
+          include: { courses: true },
+        })
+        if (existing) {
+          // Remove file from disk if not referenced by other courses
+          if (existing.courses.length === 1) {
+            removeFile(path.join(UPLOADS_DIR, existing.path, existing.filename))
+          }
+          // Remove metadata
+          await prisma.file.delete({ where: { id: existing.id } })
+        }
+      }
+      // Save file metadata (one record, connect to all selected courses)
+      const relPath = folderPath ? folderPath.replace(/^\/+|\/+$/g, '') : ''
+      const filePath = relPath ? path.join(relPath, file.originalname) : file.originalname
+      // Move file to correct folder if folderPath is provided
+      if (folderPath) {
+        const destDir = path.join(UPLOADS_DIR, relPath)
+        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true })
+        fs.renameSync(path.join(UPLOADS_DIR, file.originalname), path.join(destDir, file.originalname))
+      }
+      // Create or connect folder metadata
+      let folder = null
+      if (relPath) {
+        folder = await prisma.folder.upsert({
+          where: { path: relPath },
+          update: {},
+          create: {
+            name: relPath.split('/').pop() || relPath,
+            path: relPath,
+          },
+        })
+      }
+      // Create file metadata
+      const fileMeta = await prisma.file.create({
+        data: {
+          filename: file.originalname,
+          path: relPath,
+          size: file.size,
+          mimetype: file.mimetype,
+          uploadedBy: userId,
+          folderId: folder ? folder.id : undefined,
+          courses: {
+            connect: classIdArr.map((id: string) => ({ id })),
+          },
+        },
+      })
+      results.push(fileMeta)
+    }
+    res.json({ success: true, data: results })
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to upload files' })
+  }
+})
+
+// List files/folders for a course (including shared)
+router.get('/course/:courseId', async (req: Request, res: Response) => {
+  try {
+    const { courseId } = req.params
+    // List all folders and files for this course (including shared)
+    const folders = await prisma.folder.findMany({
+      where: {
+        courses: { some: { id: courseId } },
+      },
+      include: {
+        files: {
+          where: { courses: { some: { id: courseId } } },
+        },
+      },
+    })
+    const files = await prisma.file.findMany({
+      where: {
+        courses: { some: { id: courseId } },
+        folderId: null,
+      },
+    })
+    res.json({ success: true, data: { folders, files } })
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to list files/folders' })
+  }
+})
+
+// Move file/folder
+router.post('/move', async (req: Request, res: Response) => {
+  try {
+    // Expect: id, newFolderPath
+    const { id, newFolderPath, type } = req.body
+    if (!id || !newFolderPath) return res.status(400).json({ success: false, error: 'id and newFolderPath required' })
+    if (type === 'file') {
+      const file = await prisma.file.findUnique({ where: { id } })
+      if (!file) return res.status(404).json({ success: false, error: 'File not found' })
+      const oldPath = path.join(UPLOADS_DIR, file.path, file.filename)
+      const newDir = path.join(UPLOADS_DIR, newFolderPath)
+      if (!fs.existsSync(newDir)) fs.mkdirSync(newDir, { recursive: true })
+      fs.renameSync(oldPath, path.join(newDir, file.filename))
+      // Update metadata
+      await prisma.file.update({ where: { id }, data: { path: newFolderPath } })
+      res.json({ success: true })
+    } else if (type === 'folder') {
+      const folder = await prisma.folder.findUnique({ where: { id } })
+      if (!folder) return res.status(404).json({ success: false, error: 'Folder not found' })
+      const oldPath = path.join(UPLOADS_DIR, folder.path)
+      const newPath = path.join(UPLOADS_DIR, newFolderPath)
+      fs.renameSync(oldPath, newPath)
+      // Update metadata
+      await prisma.folder.update({ where: { id }, data: { path: newFolderPath, name: newFolderPath.split('/').pop() || newFolderPath } })
+      res.json({ success: true })
+    } else {
+      res.status(400).json({ success: false, error: 'Invalid type' })
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to move file/folder' })
+  }
+})
+
+// Rename file/folder
+router.post('/rename', async (req: Request, res: Response) => {
+  try {
+    // Expect: id, newName, type
+    const { id, newName, type } = req.body
+    if (!id || !newName) return res.status(400).json({ success: false, error: 'id and newName required' })
+    if (type === 'file') {
+      const file = await prisma.file.findUnique({ where: { id } })
+      if (!file) return res.status(404).json({ success: false, error: 'File not found' })
+      const oldPath = path.join(UPLOADS_DIR, file.path, file.filename)
+      const newPath = path.join(UPLOADS_DIR, file.path, newName)
+      fs.renameSync(oldPath, newPath)
+      await prisma.file.update({ where: { id }, data: { filename: newName } })
+      res.json({ success: true })
+    } else if (type === 'folder') {
+      const folder = await prisma.folder.findUnique({ where: { id } })
+      if (!folder) return res.status(404).json({ success: false, error: 'Folder not found' })
+      const oldPath = path.join(UPLOADS_DIR, folder.path)
+      const newPath = path.join(UPLOADS_DIR, folder.path.split('/').slice(0, -1).concat(newName).join('/'))
+      fs.renameSync(oldPath, newPath)
+      await prisma.folder.update({ where: { id }, data: { path: newPath.replace(UPLOADS_DIR + '/', ''), name: newName } })
+      res.json({ success: true })
+    } else {
+      res.status(400).json({ success: false, error: 'Invalid type' })
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to rename file/folder' })
+  }
+})
+
+// Delete file/folder
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    // Expect: id, type (file/folder) in query
+    const { type } = req.query
+    const { id } = req.params
+    if (type === 'file') {
+      const file = await prisma.file.findUnique({ where: { id } })
+      if (!file) return res.status(404).json({ success: false, error: 'File not found' })
+      removeFile(path.join(UPLOADS_DIR, file.path, file.filename))
+      await prisma.file.delete({ where: { id } })
+      res.json({ success: true })
+    } else if (type === 'folder') {
+      const folder = await prisma.folder.findUnique({ where: { id } })
+      if (!folder) return res.status(404).json({ success: false, error: 'Folder not found' })
+      removeFolder(path.join(UPLOADS_DIR, folder.path))
+      await prisma.folder.delete({ where: { id } })
+      res.json({ success: true })
+    } else {
+      res.status(400).json({ success: false, error: 'Invalid type' })
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to delete file/folder' })
+  }
+})
+
+// Download/view file
+router.get('/download/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+    const file = await prisma.file.findUnique({ where: { id } })
+    if (!file) return res.status(404).json({ success: false, error: 'File not found' })
+    const filePath = path.join(UPLOADS_DIR, file.path, file.filename)
+    if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'File not found on disk' })
+    res.download(filePath, file.filename)
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to download file' })
+  }
+})
+
+export default router 

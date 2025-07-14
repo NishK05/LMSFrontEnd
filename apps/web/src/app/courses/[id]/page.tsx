@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout'
+import { FileManager } from '@/components/files/FileManager'
 import { Button } from '@lms/ui'
 import { BookOpen, User2, Clock, Play, CheckCircle } from 'lucide-react'
 
@@ -105,6 +106,17 @@ export default function CourseSplashPage({ params }: { params: { id: string } })
 
   const publishedLessons = course.lessons.filter(lesson => lesson.isPublished)
   const isEnrolled = course.enrollments.some(enrollment => enrollment.user.id === session?.user?.id)
+  const isInstructor = course.instructorId === session?.user?.id
+  const isTeacher = session?.user?.role === 'TEACHER'
+  const isAdmin = session?.user?.role === 'ADMIN'
+
+  // Determine FileManager mode
+  const getFileManagerMode = () => {
+    if (isAdmin || isInstructor || isTeacher) {
+      return 'teacher'
+    }
+    return 'student'
+  }
 
   return (
     <ProtectedRoute>
@@ -149,7 +161,7 @@ export default function CourseSplashPage({ params }: { params: { id: string } })
               </div>
             </div>
             
-            {!isEnrolled && (
+            {!isEnrolled && !isInstructor && !isTeacher && (
               <div className="flex gap-3">
                 <Button className="bg-purple-600 hover:bg-purple-700">
                   <Play className="w-4 h-4 mr-2" />
@@ -160,10 +172,22 @@ export default function CourseSplashPage({ params }: { params: { id: string } })
                 </Button>
               </div>
             )}
+            
+            {(isInstructor || isTeacher) && (
+              <div className="flex gap-3">
+                <Button className="bg-purple-600 hover:bg-purple-700">
+                  <BookOpen className="w-4 h-4 mr-2" />
+                  Manage Course
+                </Button>
+                <Button variant="outline">
+                  View as Student
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Course Content */}
-          <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
             {/* Lessons List */}
             <div className="lg:col-span-2">
               <div className="bg-white/80 rounded-2xl shadow-lg border border-purple-100 p-6">
@@ -272,6 +296,16 @@ export default function CourseSplashPage({ params }: { params: { id: string } })
                 </div>
               )}
             </div>
+          </div>
+
+          {/* File Manager Section */}
+          <div className="mb-6">
+            <FileManager
+              mode={getFileManagerMode()}
+              courseId={params.id}
+              userId={session?.user?.id || ''}
+              userRole={session?.user?.role || 'STUDENT'}
+            />
           </div>
         </div>
       </DashboardLayout>

@@ -20,6 +20,18 @@ export function DashboardLayout({ children, rightSidebar }: DashboardLayoutProps
   const router = useRouter()
   const userName = session?.user?.name || 'Student'
 
+  // Function to route to the correct dashboard
+  const goToDashboard = () => {
+    const role = session?.user?.role
+    if (role === 'ADMIN') {
+      router.push('/dashboard/admin')
+    } else if (role === 'TEACHER') {
+      router.push('/dashboard/teacher')
+    } else {
+      router.push('/dashboard/student')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-100 via-white to-purple-200 flex flex-col">
       {/* Glass Top Bar */}
@@ -35,9 +47,14 @@ export function DashboardLayout({ children, rightSidebar }: DashboardLayoutProps
           boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
         }}
       >
-        <div className="text-xl font-bold text-white drop-shadow-sm">
+        <button
+          type="button"
+          onClick={goToDashboard}
+          className="text-xl font-bold text-white drop-shadow-sm focus:outline-none hover:underline hover:opacity-90 transition"
+          aria-label="Go to Dashboard"
+        >
           {userName}'s Dashboard
-        </div>
+        </button>
         <div className="flex items-center space-x-3">
           <Button variant="ghost" size="icon" onClick={() => router.push('/discussions')}>
             <MessageCircle className="w-6 h-6 text-white/90" />

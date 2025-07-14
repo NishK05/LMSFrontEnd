@@ -24,6 +24,7 @@ model User {
   courses     Course[]     @relation("InstructorCourses")
   enrollments Enrollment[]
   progress    Progress[]
+  files       File[]
 
   @@map("users")
 }
@@ -46,6 +47,8 @@ model Course {
   lessons     Lesson[]
   enrollments Enrollment[]
   assignments Assignment[]
+  files       File[]   @relation("CourseFiles")
+  folders     Folder[] @relation("CourseFolders")
 
   @@map("courses")
 }
@@ -110,6 +113,33 @@ model Assignment {
   description String
   dueDate     DateTime
   course      Course   @relation(fields: [courseId], references: [id])
+}
+
+model File {
+  id          String   @id @default(cuid())
+  filename    String
+  path        String
+  size        Int
+  mimetype    String
+  uploadedBy  String
+  uploadedAt  DateTime @default(now())
+  // Relations
+  uploader    User     @relation(fields: [uploadedBy], references: [id])
+  courses     Course[] @relation("CourseFiles")
+  folderId    String?
+  folder      Folder?  @relation(fields: [folderId], references: [id])
+}
+
+model Folder {
+  id          String   @id @default(cuid())
+  name        String
+  path        String
+  createdAt   DateTime @default(now())
+  parentId    String?
+  parent      Folder?  @relation("FolderParent", fields: [parentId], references: [id])
+  children    Folder[] @relation("FolderParent")
+  files       File[]
+  courses     Course[] @relation("CourseFolders")
 }
 
 enum UserRole {

@@ -106,4 +106,7 @@ Thumbs.db
 prisma/migrations/
 
 # Turbo
-.turbo 
+.turbo
+
+# Uploads directory (large files)
+apps/api/uploads/ 

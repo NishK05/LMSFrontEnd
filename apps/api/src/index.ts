@@ -1,4 +1,4 @@
-import express from 'express'
+import express, { Express } from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import morgan from 'morgan'
@@ -10,10 +10,11 @@ import authRoutes from './routes/auth'
 import courseRoutes from './routes/courses'
 import lessonRoutes from './routes/lessons'
 import userRoutes from './routes/users'
+import filesRoutes from './routes/files'
 
 dotenv.config()
 
-const app = express()
+const app: Express = express()
 const PORT = process.env.PORT || 3001
 
 // Rate limiting
@@ -44,6 +45,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/courses', courseRoutes)
 app.use('/api/lessons', lessonRoutes)
 app.use('/api/users', userRoutes)
+app.use('/api/files', filesRoutes)
 
 // Error handling
 app.use(errorHandler)

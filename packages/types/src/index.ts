@@ -121,4 +121,41 @@ export interface LessonFormData {
   description?: string;
   content: string;
   order: number;
+}
+
+// LMS Files System Types
+export interface LMSFile {
+  id: string
+  filename: string
+  path: string
+  size: number
+  mimetype: string
+  uploadedBy: string
+  uploadedAt: string
+  folderId?: string | null
+  visibleInClasses: string[] // course IDs
+}
+
+export interface LMSFolder {
+  id: string
+  name: string
+  path: string
+  createdAt: string
+  parentId?: string | null
+  children?: LMSFolder[]
+  files?: LMSFile[]
+  visibleInClasses: string[] // course IDs
+}
+
+export type FileManagerMode = 'teacher' | 'student'
+
+export interface FileManagerState {
+  currentPath: string
+  folders: LMSFolder[]
+  files: LMSFile[]
+  loading: boolean
+  error: string
+  uploadProgress: number
+  selectedFiles: File[]
+  selectedClasses: string[]
 } 

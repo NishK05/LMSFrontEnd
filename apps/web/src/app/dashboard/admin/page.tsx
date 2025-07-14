@@ -7,6 +7,7 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { Button } from '@lms/ui'
 import { CourseForm } from '@/components/admin/CourseForm'
 import { CourseList } from '../../../components/admin/CourseList'
+import { DashboardLayout } from '@/components/dashboard/DashboardLayout'
 
 interface User {
   id: string
@@ -100,39 +101,25 @@ export default function AdminDashboardPage() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          {/* Header */}
-          <div className="px-4 py-6 sm:px-0">
-            <div className="flex justify-between items-center">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-                <p className="mt-1 text-sm text-gray-600">
-                  Welcome, {session.user.name} - Manage courses and users
-                </p>
-              </div>
-              <div className="flex items-center space-x-3">
-                <Button onClick={() => setShowCourseForm(true)}>
-                  Add New Course
-                </Button>
-                <Button onClick={handleSignOut} variant="outline">
-                  Sign Out
-                </Button>
-              </div>
+      <DashboardLayout>
+        <div className="flex flex-col h-full">
+          {/* Course Management Section */}
+          <div className="bg-white/80 rounded-2xl shadow-lg border border-purple-100 p-6">
+            <h2 className="text-xl font-semibold text-purple-900 mb-4">Course Management</h2>
+            <div className="flex justify-end mb-4">
+              <Button onClick={() => setShowCourseForm(true)}>
+                Add New Course
+              </Button>
             </div>
-          </div>
-
-          {/* Course Form Modal */}
-          {showCourseForm && (
-            <CourseForm
-              teachers={teachers}
-              onClose={() => setShowCourseForm(false)}
-              onCourseCreated={handleCourseCreated}
-            />
-          )}
-
-          {/* Course List */}
-          <div className="px-4 py-6 sm:px-0">
+            {/* Course Form Modal */}
+            {showCourseForm && (
+              <CourseForm
+                teachers={teachers}
+                onClose={() => setShowCourseForm(false)}
+                onCourseCreated={handleCourseCreated}
+              />
+            )}
+            {/* Course List */}
             <CourseList 
               courses={courses} 
               loading={loading}
@@ -140,7 +127,7 @@ export default function AdminDashboardPage() {
             />
           </div>
         </div>
-      </div>
+      </DashboardLayout>
     </ProtectedRoute>
   )
 } 
