@@ -66,30 +66,30 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
   }, [mode])
 
   // Fetch files/folders for the current course and path
-  useEffect(() => {
-    const fetchFiles = async () => {
-      setLoading(true)
-      setError('')
-      try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/files/course/${courseId}`)
-        const data = await res.json()
-        if (data.success) {
-          // Filter by currentPath
-          const allFolders: LMSFolder[] = data.data.folders || []
-          const allFiles: LMSFile[] = data.data.files || []
-          const foldersInPath = allFolders.filter(f => (f.path || '') === currentPath)
-          const filesInPath = allFiles.filter(f => (f.path || '') === currentPath)
-          setFolders(foldersInPath)
-          setFiles(filesInPath)
-        } else {
-          setError(data.error || 'Failed to load files')
-        }
-      } catch (e) {
-        setError('Failed to load files')
-      } finally {
-        setLoading(false)
+  const fetchFiles = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/files/course/${courseId}`)
+      const data = await res.json()
+      if (data.success) {
+        // Filter by currentPath
+        const allFolders: LMSFolder[] = data.data.folders || []
+        const allFiles: LMSFile[] = data.data.files || []
+        const foldersInPath = allFolders.filter(f => (f.path || '') === currentPath)
+        const filesInPath = allFiles.filter(f => (f.path || '') === currentPath)
+        setFolders(foldersInPath)
+        setFiles(filesInPath)
+      } else {
+        setError(data.error || 'Failed to load files')
       }
+    } catch (e) {
+      setError('Failed to load files')
+    } finally {
+      setLoading(false)
     }
+  }
+  useEffect(() => {
     fetchFiles()
   }, [courseId, currentPath])
 
@@ -112,12 +112,12 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
   }
 
   // Perform the actual upload
-  const performUpload = async (filesToUpload: FileList | File[]) => {
+  const performUpload = async (filesToUpload: FileList | File[], classIds: string[] = selectedClasses) => {
     const formData = new FormData()
     for (const file of Array.from(filesToUpload)) {
       formData.append('files', file)
     }
-    formData.append('classIds', selectedClasses.join(','))
+    formData.append('classIds', classIds.join(','))
     formData.append('userId', userId)
     formData.append('folderPath', currentPath)
     setLoading(true)
@@ -133,8 +133,8 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
         setPendingUpload(null)
         setShowClassSelector(false)
         setTimeout(() => setSuccess(''), 2000)
-        // Refresh files
-        setTimeout(() => setLoading(false), 500)
+        // Immediately refresh files
+        fetchFiles()
       } else {
         setError(data.error || 'Upload failed')
       }
@@ -148,7 +148,7 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
   // Handle class selection for upload
   const handleClassSelection = () => {
     if (pendingUpload) {
-      performUpload(pendingUpload)
+      performUpload(pendingUpload, selectedClasses)
     }
   }
 
@@ -208,7 +208,7 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
         setNewName('')
         setTimeout(() => setSuccess(''), 2000)
         // Refresh files
-        setTimeout(() => setLoading(false), 500)
+        fetchFiles()
       } else {
         setError(data.error || 'Rename failed')
       }
@@ -240,7 +240,7 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
         setNewPath('')
         setTimeout(() => setSuccess(''), 2000)
         // Refresh files
-        setTimeout(() => setLoading(false), 500)
+        fetchFiles()
       } else {
         setError(data.error || 'Move failed')
       }
@@ -264,7 +264,7 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
         setSuccess(`${type === 'file' ? 'File' : 'Folder'} deleted successfully!`)
         setTimeout(() => setSuccess(''), 2000)
         // Refresh files
-        setTimeout(() => setLoading(false), 500)
+        fetchFiles()
       } else {
         setError(data.error || 'Delete failed')
       }
