@@ -92,7 +92,7 @@ router.post('/upload', upload.any(), async (req: Request, res: Response) => {
       let folder = null
       if (relPath) {
         folder = await prisma.folder.upsert({
-          where: { path: relPath },
+          where: { path: relPath }, // path is unique according to the schema
           update: {},
           create: {
             name: relPath.split('/').pop() || relPath,
@@ -249,6 +249,25 @@ router.get('/download/:id', async (req: Request, res: Response) => {
     res.download(filePath, file.filename)
   } catch (error) {
     res.status(500).json({ success: false, error: 'Failed to download file' })
+  }
+})
+
+// Preview file (inline)
+router.get('/preview/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+    const file = await prisma.file.findUnique({ where: { id } })
+    if (!file) return res.status(404).json({ success: false, error: 'File not found' })
+    const filePath = path.join(UPLOADS_DIR, file.path, file.filename)
+    if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'File not found on disk' })
+    res.setHeader('Content-Type', file.mimetype)
+    res.setHeader('Content-Disposition', 'inline; filename="' + file.filename + '"')
+    // Allow embedding in iframe from localhost:3000
+    res.setHeader('X-Frame-Options', 'ALLOW-FROM http://localhost:3000')
+    res.setHeader('Content-Security-Policy', "frame-ancestors 'self' http://localhost:3000")
+    fs.createReadStream(filePath).pipe(res)
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to preview file' })
   }
 })
 

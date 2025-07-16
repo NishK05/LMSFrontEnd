@@ -44,7 +44,8 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
   const [newName, setNewName] = useState('')
   const [newPath, setNewPath] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
-  
+  const [previewFile, setPreviewFile] = useState<LMSFile | null>(null)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch available courses for multi-class selection
@@ -275,6 +276,28 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
     }
   }
 
+  // Helper: check if file is previewable by browser
+  function isPreviewable(file: LMSFile) {
+    const previewableTypes = [
+      'application/pdf',
+      'image/',
+      'text/',
+      'application/json',
+      'application/xml',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+      'application/vnd.oasis.opendocument.text',
+      'application/vnd.oasis.opendocument.spreadsheet',
+      'application/rtf',
+      'application/csv',
+      'text/csv',
+      'text/markdown',
+    ]
+    return previewableTypes.some(type => file.mimetype.startsWith(type) || file.mimetype === type)
+  }
+
   // Breadcrumb navigation
   const breadcrumbs = getBreadcrumbs(currentPath)
 
@@ -409,7 +432,11 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
               
               {/* Files */}
               {files.map(file => (
-                <tr key={file.id} className="hover:bg-purple-50 border-b border-purple-100">
+                <tr
+                  key={file.id}
+                  className="hover:bg-purple-50 border-b border-purple-100 cursor-pointer"
+                  onDoubleClick={() => setPreviewFile(file)}
+                >
                   <td className="py-3 px-2">
                     <div className="flex items-center gap-2">
                       <FileIcon className="w-5 h-5 text-purple-400" />
@@ -550,6 +577,33 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
               <Button onClick={handleMove} disabled={actionLoading || !newPath.trim()}>
                 {actionLoading ? 'Moving...' : 'Move'}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* File Preview Modal */}
+      {previewFile && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl h-[80vh] flex flex-col">
+            <div className="flex justify-between items-center p-4 border-b">
+              <span className="font-semibold truncate max-w-[80%]">{previewFile.filename}</span>
+              <button onClick={() => setPreviewFile(null)} className="text-2xl font-bold text-gray-500 hover:text-gray-700">&times;</button>
+            </div>
+            <div className="flex-1 overflow-auto flex items-center justify-center bg-gray-50">
+              {isPreviewable(previewFile) ? (
+                <iframe
+                  src={`${process.env.NEXT_PUBLIC_API_URL}/files/preview/${previewFile.id}`}
+                  title="File Preview"
+                  className="w-full h-full border-0"
+                  style={{ minHeight: '60vh' }}
+                />
+              ) : (
+                <div className="text-center text-gray-500 p-8">
+                  <p>Cannot preview this file type in browser.</p>
+                  <p className="text-xs mt-2">Try downloading the file to view it.</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
