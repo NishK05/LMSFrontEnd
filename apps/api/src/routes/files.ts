@@ -3,6 +3,9 @@ import multer, { StorageEngine } from 'multer'
 import { PrismaClient } from '@prisma/client'
 import path from 'path'
 import fs from 'fs'
+// Use require for node-fetch v2 compatibility
+const fetch = require('node-fetch')
+const FormData = require('form-data')
 
 const router: Router = Router()
 const prisma = new PrismaClient()
@@ -115,6 +118,23 @@ router.post('/upload', upload.any(), async (req: Request, res: Response) => {
         },
       })
       results.push(fileMeta)
+      // --- Trigger Python microservice ingest ---
+      try {
+        const ingestUrl = process.env.CLASSGPT_INGEST_URL || 'http://localhost:8000/ingest'
+        const fileFullPath = path.join(UPLOADS_DIR, relPath, file.originalname)
+        const form = new FormData()
+        form.append('class_id', classIdArr[0])
+        form.append('document_id', fileMeta.id)
+        form.append('files', fs.createReadStream(fileFullPath), { filename: fileMeta.filename })
+        await fetch(ingestUrl, {
+          method: 'POST',
+          body: form,
+          headers: form.getHeaders(),
+        })
+      } catch (err) {
+        console.error('Failed to trigger Python ingest for file:', file.originalname, err)
+      }
+      // --- End Python microservice ingest ---
     }
     res.json({ success: true, data: results })
   } catch (error) {

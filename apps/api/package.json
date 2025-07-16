@@ -29,6 +29,7 @@
     "morgan": "^1.10.0",
     "multer": "^2.0.1",
     "next-auth": "^4.24.5",
+    "node-fetch": "^2.7.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
