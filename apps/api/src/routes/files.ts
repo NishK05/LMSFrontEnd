@@ -239,10 +239,28 @@ router.delete('/:id', async (req: Request, res: Response) => {
     const { type } = req.query
     const { id } = req.params
     if (type === 'file') {
-      const file = await prisma.file.findUnique({ where: { id } })
+      const file = await prisma.file.findUnique({ where: { id }, include: { courses: true } })
       if (!file) return res.status(404).json({ success: false, error: 'File not found' })
       removeFile(path.join(UPLOADS_DIR, file.path, file.filename))
       await prisma.file.delete({ where: { id } })
+      // --- Trigger Python microservice delete-file-chunks ---
+      try {
+        // Get all course IDs this file belonged to
+        const courseIds = file.courses?.map((c: any) => c.id) || []
+        const deleteUrl = process.env.CLASSGPT_DELETE_CHUNKS_URL || 'http://localhost:8000/delete-file-chunks'
+        for (const classId of courseIds) {
+          const resp = await fetch(deleteUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ class_id: classId, filename: file.filename })
+          })
+          const text = await resp.text()
+          console.log(`[DELETE] Qdrant response for class ${classId}, file ${file.filename}:`, text)
+        }
+      } catch (err) {
+        console.error('Failed to trigger Python delete-file-chunks for file:', file.filename, err)
+      }
+      // --- End Python microservice delete-file-chunks ---
       res.json({ success: true })
     } else if (type === 'folder') {
       const folder = await prisma.folder.findUnique({ where: { id } })

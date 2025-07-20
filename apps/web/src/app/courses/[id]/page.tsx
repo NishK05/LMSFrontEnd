@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout'
 import { FileManager } from '@/components/files/FileManager'
+import { ChatInterface } from '@/components/chat/ChatInterface'
 import { Button } from '@lms/ui'
 import { BookOpen, User2, Clock, Play, CheckCircle } from 'lucide-react'
 
@@ -306,6 +307,17 @@ export default function CourseSplashPage({ params }: { params: { id: string } })
               userId={session?.user?.id || ''}
               userRole={session?.user?.role || 'STUDENT'}
             />
+          </div>
+
+          {/* Course Chat Section */}
+          <div className="mb-6">
+            <div className="bg-white/80 rounded-2xl shadow-lg border border-purple-100 p-6">
+              <h2 className="text-xl font-semibold text-purple-900 mb-4">Course Assistant</h2>
+              <p className="text-purple-600 mb-4">Ask questions about this course and get instant help</p>
+              <div className="h-96">
+                <ChatInterface courseId={params.id} />
+              </div>
+            </div>
           </div>
         </div>
       </DashboardLayout>

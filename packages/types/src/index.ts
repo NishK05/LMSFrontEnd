@@ -158,4 +158,36 @@ export interface FileManagerState {
   uploadProgress: number
   selectedFiles: File[]
   selectedClasses: string[]
+}
+
+// Chat types
+export interface ChatMessage {
+  id: string
+  content: string
+  role: 'user' | 'assistant'
+  timestamp: Date
+  courseId?: string
+}
+
+export interface ChatRequest {
+  message: string
+  courseId?: string
+  userId: string
+}
+
+export interface ChatResponse {
+  success: boolean
+  data?: {
+    message: string
+    sources?: string[]
+  }
+  error?: string
+}
+
+export interface ChatSession {
+  id: string
+  userId: string
+  messages: ChatMessage[]
+  createdAt: Date
+  updatedAt: Date
 } 

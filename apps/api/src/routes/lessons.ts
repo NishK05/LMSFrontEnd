@@ -1,6 +1,6 @@
 import { Router } from 'express'
 
-const router = Router()
+const router: Router = Router()
 
 // Get all lessons for a course
 router.get('/course/:courseId', (req, res) => {

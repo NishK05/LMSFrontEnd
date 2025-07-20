@@ -8,6 +8,7 @@ import json
 def index_chunks_to_qdrant(records: list[dict], class_id: str):
     """
     Indexes the embedded chunk records into Qdrant using the provided class_id as the collection name.
+    Only creates the collection if it doesn't exist, and upserts new points without deleting existing ones.
     """
     if not records:
         print("No records to index.")
@@ -18,20 +19,18 @@ def index_chunks_to_qdrant(records: list[dict], class_id: str):
     # Check if collection exists, create if it doesn't
     try:
         collection_info = client.get_collection(class_id)
-        print(f"Collection '{class_id}' already exists, deleting and recreating...")
-        client.delete_collection(class_id)
+        print(f"Collection '{class_id}' already exists, will upsert new points...")
     except Exception:
         print(f"Collection '{class_id}' does not exist, creating new collection...")
-    
-    print(f"Creating collection '{class_id}' with vector size {vector_size}...")
-    client.create_collection(
-        collection_name=class_id,
-        vectors_config=qmodels.VectorParams(
-            size=vector_size,
-            distance=qmodels.Distance.COSINE,
-            on_disk=True
+        client.create_collection(
+            collection_name=class_id,
+            vectors_config=qmodels.VectorParams(
+                size=vector_size,
+                distance=qmodels.Distance.COSINE,
+                on_disk=True
+            )
         )
-    )
+    
     # Prepare points
     points = []
     for rec in records:
@@ -56,7 +55,7 @@ def index_chunks_to_qdrant(records: list[dict], class_id: str):
         }, indent=2)[:1000])  # Truncate if too long
     try:
         client.upsert(collection_name=class_id, points=points)
-        print(f"Inserted {len(points)} records to collection {class_id}")
+        print(f"Upserted {len(points)} records to collection {class_id}")
     except ResponseHandlingException as e:
         print("Qdrant ResponseHandlingException:")
         print(e)

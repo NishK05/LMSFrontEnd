@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { createError } from '../middleware/errorHandler'
 
-const router = Router()
+const router: Router = Router()
 const prisma = new PrismaClient()
 
 // Get all courses with instructor information
