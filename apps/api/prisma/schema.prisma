@@ -123,6 +123,9 @@ model File {
   mimetype    String
   uploadedBy  String
   uploadedAt  DateTime @default(now())
+  protect     Boolean  @default(false)
+  originalPath String?
+  protectedPath String?
   // Relations
   uploader    User     @relation(fields: [uploadedBy], references: [id])
   courses     Course[] @relation("CourseFiles")

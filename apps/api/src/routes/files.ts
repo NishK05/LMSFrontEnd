@@ -54,7 +54,7 @@ router.post('/upload', upload.any(), async (req: Request, res: Response) => {
   try {
     // Expect: req.body.classIds (comma-separated), req.body.folderPath (optional for folders)
     // req.files: array of files (multer)
-    const { classIds, folderPath } = req.body
+    const { classIds, folderPath, protect } = req.body
     const classIdArr = classIds ? classIds.split(',') : []
     const userId = req.body.userId || 'unknown' // In real app, get from session/JWT
     if (!req.files || classIdArr.length === 0) {
@@ -83,19 +83,31 @@ router.post('/upload', upload.any(), async (req: Request, res: Response) => {
         }
       }
       // Save file metadata (one record, connect to all selected courses)
-      const relPath = folderPath ? folderPath.replace(/^\/+|\/+$/g, '') : ''
+      const relPath = folderPath ? folderPath.replace(/^\/+/g, '').replace(/\/+$/g, '') : ''
       const filePath = relPath ? path.join(relPath, file.originalname) : file.originalname
-      // Move file to correct folder if folderPath is provided
-      if (folderPath) {
-        const destDir = path.join(UPLOADS_DIR, relPath)
-        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true })
-        fs.renameSync(path.join(UPLOADS_DIR, file.originalname), path.join(destDir, file.originalname))
+      const absFilePath = path.join(UPLOADS_DIR, filePath)
+      let protectedFilePath: string | null = null
+      // If protect is true and PDF, run dual_trojan.py to create protected version
+      if ((protect === 'true' || protect === true) && file.mimetype === 'application/pdf') {
+        const protectedName = file.originalname.replace(/\.pdf$/i, '-protected.pdf')
+        protectedFilePath = relPath ? path.join(relPath, protectedName) : protectedName
+        const absProtectedPath = path.join(UPLOADS_DIR, protectedFilePath)
+        // Call dual_trojan.py
+        const { spawnSync } = require('child_process')
+        const scriptPath = path.join(__dirname, '../../dual_trojan.py')
+        const result = spawnSync('python3', [scriptPath, absFilePath, absProtectedPath], { encoding: 'utf-8' })
+        console.log('dual_trojan.py stdout:', result.stdout)
+        console.log('dual_trojan.py stderr:', result.stderr)
+        if (result.error || result.status !== 0) {
+          console.error('Watermarking failed:', result.error || result.stderr)
+          protectedFilePath = null
+        }
       }
       // Create or connect folder metadata
       let folder = null
       if (relPath) {
         folder = await prisma.folder.upsert({
-          where: { path: relPath }, // path is unique according to the schema
+          where: { path: relPath },
           update: {},
           create: {
             name: relPath.split('/').pop() || relPath,
@@ -112,10 +124,13 @@ router.post('/upload', upload.any(), async (req: Request, res: Response) => {
           mimetype: file.mimetype,
           uploadedBy: userId,
           folderId: folder ? folder.id : undefined,
+          protect: protect === 'true' || protect === true ? true : false,
+          originalPath: filePath,
+          protectedPath: protectedFilePath || undefined,
           courses: {
             connect: classIdArr.map((id: string) => ({ id })),
           },
-        },
+        } as any,
       })
       results.push(fileMeta)
       // --- Trigger Python microservice ingest ---
@@ -162,6 +177,16 @@ router.get('/course/:courseId', async (req: Request, res: Response) => {
         courses: { some: { id: courseId } },
         folderId: null,
       },
+      select: {
+        id: true,
+        filename: true,
+        path: true,
+        size: true,
+        mimetype: true,
+        uploadedBy: true,
+        uploadedAt: true,
+        protect: true,
+      } as any, // allow 'protect' field
     })
     res.json({ success: true, data: { folders, files } })
   } catch (error) {
@@ -239,9 +264,17 @@ router.delete('/:id', async (req: Request, res: Response) => {
     const { type } = req.query
     const { id } = req.params
     if (type === 'file') {
-      const file = await prisma.file.findUnique({ where: { id }, include: { courses: true } })
+      const file = await prisma.file.findUnique({
+        where: { id },
+        include: { courses: true },
+      })
       if (!file) return res.status(404).json({ success: false, error: 'File not found' })
+      // Remove original file
       removeFile(path.join(UPLOADS_DIR, file.path, file.filename))
+      // Remove protected file if it exists
+      if (file.protectedPath) {
+        removeFile(path.join(UPLOADS_DIR, file.protectedPath))
+      }
       await prisma.file.delete({ where: { id } })
       // --- Trigger Python microservice delete-file-chunks ---
       try {
@@ -280,9 +313,31 @@ router.delete('/:id', async (req: Request, res: Response) => {
 router.get('/download/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params
-    const file = await prisma.file.findUnique({ where: { id } })
+    const userRole = (req.query.userRole || '').toString().toUpperCase()
+    const file = await prisma.file.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        filename: true,
+        path: true,
+        size: true,
+        mimetype: true,
+        uploadedBy: true,
+        uploadedAt: true,
+        folderId: true,
+        protectedPath: true,
+        originalPath: true,
+      } as any,
+    })
     if (!file) return res.status(404).json({ success: false, error: 'File not found' })
-    const filePath = path.join(UPLOADS_DIR, file.path, file.filename)
+    let filePath = path.join(UPLOADS_DIR, file.path, file.filename)
+    // Serve protected version for students if it exists
+    if (userRole === 'STUDENT' && file.protectedPath) {
+      filePath = path.join(UPLOADS_DIR, file.protectedPath)
+      if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'Protected file not found on disk' })
+      return res.download(filePath, file.filename.replace(/\.pdf$/i, '-protected.pdf'))
+    }
+    // Otherwise serve original
     if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'File not found on disk' })
     res.download(filePath, file.filename)
   } catch (error) {
@@ -294,9 +349,37 @@ router.get('/download/:id', async (req: Request, res: Response) => {
 router.get('/preview/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params
-    const file = await prisma.file.findUnique({ where: { id } })
+    const userRole = (req.query.userRole || '').toString().toUpperCase()
+    const file = await prisma.file.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        filename: true,
+        path: true,
+        size: true,
+        mimetype: true,
+        uploadedBy: true,
+        uploadedAt: true,
+        folderId: true,
+        protectedPath: true,
+        originalPath: true,
+      } as any,
+    })
     if (!file) return res.status(404).json({ success: false, error: 'File not found' })
-    const filePath = path.join(UPLOADS_DIR, file.path, file.filename)
+    let filePath = path.join(UPLOADS_DIR, file.path, file.filename)
+    // Serve protected version for students if it exists
+    if (userRole === 'STUDENT' && file.protectedPath) {
+      filePath = path.join(UPLOADS_DIR, file.protectedPath)
+      if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'Protected file not found on disk' })
+      res.setHeader('Content-Type', file.mimetype)
+      res.setHeader('Content-Disposition', 'inline; filename="' + file.filename.replace(/\.pdf$/i, '-protected.pdf') + '"')
+      // Allow embedding in iframe from localhost:3000
+      res.setHeader('X-Frame-Options', 'ALLOW-FROM http://localhost:3000')
+      res.setHeader('Content-Security-Policy', "frame-ancestors 'self' http://localhost:3000")
+      fs.createReadStream(filePath).pipe(res)
+      return
+    }
+    // Otherwise serve original
     if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'File not found on disk' })
     res.setHeader('Content-Type', file.mimetype)
     res.setHeader('Content-Disposition', 'inline; filename="' + file.filename + '"')

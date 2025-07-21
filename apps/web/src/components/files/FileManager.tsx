@@ -45,6 +45,7 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
   const [newPath, setNewPath] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
   const [previewFile, setPreviewFile] = useState<LMSFile | null>(null)
+  const [protectDocuments, setProtectDocuments] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -121,6 +122,9 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
     formData.append('classIds', classIds.join(','))
     formData.append('userId', userId)
     formData.append('folderPath', currentPath)
+    if (mode === 'teacher') {
+      formData.append('protect', String(protectDocuments))
+    }
     setLoading(true)
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/files/upload`, {
@@ -171,7 +175,7 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
   // Download file
   const handleDownload = async (fileId: string) => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/files/download/${fileId}`)
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/files/download/${fileId}?userRole=${userRole}`)
       if (!res.ok) throw new Error('Download failed')
       const blob = await res.blob()
       const url = window.URL.createObjectURL(blob)
@@ -510,6 +514,18 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
               ))}
             </div>
             
+            {/* Protect documents checkbox inside modal */}
+            <div className="mt-4 flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={protectDocuments}
+                onChange={e => setProtectDocuments(e.target.checked)}
+                className="rounded"
+                id="protect-documents-checkbox"
+              />
+              <label htmlFor="protect-documents-checkbox" className="text-sm text-purple-700">Protect documents</label>
+            </div>
+
             <div className="flex justify-end gap-2 mt-6">
               <Button 
                 variant="outline" 
@@ -593,7 +609,7 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
             <div className="flex-1 overflow-auto flex items-center justify-center bg-gray-50">
               {isPreviewable(previewFile) ? (
                 <iframe
-                  src={`${process.env.NEXT_PUBLIC_API_URL}/files/preview/${previewFile.id}`}
+                  src={`${process.env.NEXT_PUBLIC_API_URL}/files/preview/${previewFile.id}?userRole=${userRole}`}
                   title="File Preview"
                   className="w-full h-full border-0"
                   style={{ minHeight: '60vh' }}
