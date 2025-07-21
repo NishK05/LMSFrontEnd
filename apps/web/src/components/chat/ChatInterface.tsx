@@ -13,20 +13,28 @@ interface ChatMessage {
   courseId?: string
 }
 
+interface CourseOption {
+  id: string
+  title: string
+}
+
 interface ChatInterfaceProps {
   courseId?: string
 }
 
-export function ChatInterface({ courseId }: ChatInterfaceProps) {
+export function ChatInterface({ courseId: initialCourseId }: ChatInterfaceProps) {
   const { data: session } = useSession()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputMessage, setInputMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [courses, setCourses] = useState<CourseOption[]>([])
+  const [selectedCourseId, setSelectedCourseId] = useState<string | undefined>(initialCourseId)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const userId = session?.user?.id
+  const userRole = session?.user?.role
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -43,6 +51,22 @@ export function ChatInterface({ courseId }: ChatInterfaceProps) {
       loadChatHistory()
     }
   }, [userId])
+
+  // Fetch enrolled courses for students
+  useEffect(() => {
+    if (userRole === 'STUDENT' && userId) {
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/enrollments?userId=${userId}`)
+        .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch courses'))
+        .then(data => {
+          const courseList = (data.data || []).map((c: any) => ({ id: c.id, title: c.title }))
+          setCourses(courseList)
+          if (courseList.length > 0) {
+            setSelectedCourseId(courseList[0].id)
+          }
+        })
+        .catch(() => setCourses([]))
+    }
+  }, [userId, userRole])
 
   const loadChatHistory = async () => {
     try {
@@ -61,22 +85,21 @@ export function ChatInterface({ courseId }: ChatInterfaceProps) {
     }
   }
 
+  // Update: use selectedCourseId for sending messages
   const sendMessage = async () => {
     if (!inputMessage.trim() || !userId || isLoading) return
-
+    const courseIdToSend = userRole === 'STUDENT' ? selectedCourseId : initialCourseId
     const userMessage: ChatMessage = {
       id: `user_${Date.now()}`,
       content: inputMessage.trim(),
       role: 'user',
       timestamp: new Date(),
-      courseId
+      courseId: courseIdToSend
     }
-
     setMessages(prev => [...prev, userMessage])
     setInputMessage('')
     setIsLoading(true)
     setError('')
-
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat/message`, {
         method: 'POST',
@@ -85,11 +108,10 @@ export function ChatInterface({ courseId }: ChatInterfaceProps) {
         },
         body: JSON.stringify({
           message: userMessage.content,
-          courseId,
+          courseId: courseIdToSend,
           userId
         }),
       })
-
       if (response.ok) {
         const data = await response.json()
         if (data.success && data.data) {
@@ -98,7 +120,7 @@ export function ChatInterface({ courseId }: ChatInterfaceProps) {
             content: data.data.message,
             role: 'assistant',
             timestamp: new Date(),
-            courseId
+            courseId: courseIdToSend
           }
           setMessages(prev => [...prev, botMessage])
         }
@@ -141,6 +163,22 @@ export function ChatInterface({ courseId }: ChatInterfaceProps) {
 
   return (
     <div className="flex flex-col h-full bg-white/80 rounded-2xl shadow-lg border border-purple-100">
+      {/* Course Context Dropdown for Students */}
+      {userRole === 'STUDENT' && courses.length > 0 && (
+        <div className="p-4 border-b border-purple-100 bg-purple-50/50">
+          <label htmlFor="course-context" className="block text-sm font-medium text-purple-700 mb-1">Course Context</label>
+          <select
+            id="course-context"
+            value={selectedCourseId}
+            onChange={e => setSelectedCourseId(e.target.value)}
+            className="w-full px-3 py-2 border border-purple-200 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-purple-900"
+          >
+            {courses.map(course => (
+              <option key={course.id} value={course.id}>{course.title}</option>
+            ))}
+          </select>
+        </div>
+      )}
       {/* Chat Header */}
       <div className="flex items-center justify-between p-4 border-b border-purple-100">
         <div className="flex items-center gap-3">
