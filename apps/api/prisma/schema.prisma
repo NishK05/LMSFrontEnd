@@ -25,6 +25,11 @@ model User {
   enrollments Enrollment[]
   progress    Progress[]
   files       File[]
+  posts       DiscussionPost[]
+  replies     DiscussionReply[]
+  assignedCourses DiscussionCollaborator[] @relation("AssignedCourses")
+  assignedBy DiscussionCollaborator[] @relation("AssignedBy")
+  createdTags DiscussionTag[] @relation("CreatedTags")
 
   @@map("users")
 }
@@ -49,6 +54,9 @@ model Course {
   assignments Assignment[]
   files       File[]   @relation("CourseFiles")
   folders     Folder[] @relation("CourseFolders")
+  tags        DiscussionTag[]
+  posts       DiscussionPost[]
+  collaborators DiscussionCollaborator[]
 
   @@map("courses")
 }
@@ -143,6 +151,73 @@ model Folder {
   children    Folder[] @relation("FolderParent")
   files       File[]
   courses     Course[] @relation("CourseFolders")
+}
+
+model DiscussionTag {
+  id          String   @id @default(cuid())
+  courseId    String
+  name        String
+  createdById String
+  createdAt   DateTime @default(now())
+
+  course      Course   @relation(fields: [courseId], references: [id])
+  createdBy   User     @relation("CreatedTags", fields: [createdById], references: [id])
+  posts       DiscussionPost[]
+}
+
+model DiscussionPost {
+  id            String   @id @default(cuid())
+  courseId      String
+  authorId      String
+  title         String
+  body          String
+  type          String   // "QUESTION" | "POST"
+  tagId         String
+  privacy       String   // "PUBLIC" | "PRIVATE" | "ANONYMOUS"
+  isPinned      Boolean  @default(false)
+  isResolved    Boolean  @default(false)
+  isDeleted     Boolean  @default(false)
+  uniqueCode    String   @unique
+  attachmentUrl String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  course        Course         @relation(fields: [courseId], references: [id])
+  author        User           @relation(fields: [authorId], references: [id])
+  tag           DiscussionTag  @relation(fields: [tagId], references: [id])
+  replies       DiscussionReply[]
+}
+
+model DiscussionReply {
+  id            String   @id @default(cuid())
+  postId        String
+  parentReplyId String?
+  authorId      String
+  body          String
+  privacy       String   // "PUBLIC" | "PRIVATE" | "ANONYMOUS"
+  isEndorsed    Boolean  @default(false)
+  isDeleted     Boolean  @default(false)
+  uniqueCode    String   @unique
+  attachmentUrl String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  post          DiscussionPost   @relation(fields: [postId], references: [id])
+  parentReply   DiscussionReply? @relation("ParentReply", fields: [parentReplyId], references: [id])
+  author        User             @relation(fields: [authorId], references: [id])
+  replies       DiscussionReply[] @relation("ParentReply")
+}
+
+model DiscussionCollaborator {
+  id           String   @id @default(cuid())
+  userId       String
+  courseId     String
+  assignedById String
+  createdAt    DateTime @default(now())
+
+  user         User     @relation("AssignedCourses", fields: [userId], references: [id])
+  course       Course   @relation(fields: [courseId], references: [id])
+  assignedBy   User     @relation("AssignedBy", fields: [assignedById], references: [id])
 }
 
 enum UserRole {

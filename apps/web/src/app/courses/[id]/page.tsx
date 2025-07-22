@@ -105,7 +105,6 @@ export default function CourseSplashPage({ params }: { params: { id: string } })
     )
   }
 
-  const publishedLessons = course.lessons.filter(lesson => lesson.isPublished)
   const isEnrolled = course.enrollments.some(enrollment => enrollment.user.id === session?.user?.id)
   const isInstructor = course.instructorId === session?.user?.id
   const isTeacher = session?.user?.role === 'TEACHER'
@@ -132,15 +131,13 @@ export default function CourseSplashPage({ params }: { params: { id: string } })
                 <div className="flex items-center gap-6 text-sm text-purple-500">
                   <div className="flex items-center gap-2">
                     <User2 className="w-4 h-4" />
-                    <span>Instructor: {course.instructor.name}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="w-4 h-4" />
-                    <span>{publishedLessons.length} Lessons</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    <span>Created {new Date(course.createdAt).toLocaleDateString()}</span>
+                    <span>Instructor: {course.instructor.name} (<span className="text-purple-700">{course.instructor.email}</span>)</span>
+                    <span
+                      className="ml-4 px-2 py-1 bg-purple-100 text-purple-700 rounded cursor-pointer hover:bg-purple-200"
+                      onClick={() => router.push(`/courses/${course.id}/students`)}
+                    >
+                      Students Enrolled: {course.enrollments.length}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -187,126 +184,41 @@ export default function CourseSplashPage({ params }: { params: { id: string } })
             )}
           </div>
 
-          {/* Course Content */}
-          <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            {/* Lessons List */}
-            <div className="lg:col-span-2">
+          {/* Main Content: Files + Assignments Side Panel */}
+          <div className="flex flex-row gap-6 mb-6">
+            {/* Files Section */}
+            <div className="flex-1">
               <div className="bg-white/80 rounded-2xl shadow-lg border border-purple-100 p-6">
-                <h2 className="text-xl font-semibold text-purple-900 mb-4">Course Content</h2>
-                {publishedLessons.length === 0 ? (
-                  <div className="text-center py-8">
-                    <BookOpen className="w-12 h-12 text-purple-300 mx-auto mb-4" />
-                    <p className="text-purple-500">No lessons available yet</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {publishedLessons
-                      .sort((a, b) => a.order - b.order)
-                      .map((lesson, index) => (
-                        <div
-                          key={lesson.id}
-                          className="flex items-center gap-4 p-4 rounded-xl bg-purple-50/50 border border-purple-100 hover:bg-purple-50 transition-colors cursor-pointer"
-                          onClick={() => router.push(`/courses/${course.id}/lessons/${lesson.id}`)}
-                        >
-                          <div className="flex-shrink-0 w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-                            <span className="text-sm font-medium text-purple-700">{index + 1}</span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h3 className="font-medium text-purple-900 truncate">{lesson.title}</h3>
-                            {lesson.description && (
-                              <p className="text-sm text-purple-600 truncate">{lesson.description}</p>
-                            )}
-                          </div>
-                          <div className="flex-shrink-0">
-                            <Play className="w-5 h-5 text-purple-400" />
-                          </div>
+                <h2 className="text-xl font-semibold text-purple-900 mb-4">Files</h2>
+                <FileManager
+                  mode={getFileManagerMode()}
+                  courseId={params.id}
+                  userId={session?.user?.id || ''}
+                  userRole={session?.user?.role || 'STUDENT'}
+                />
+              </div>
+            </div>
+            {/* Assignments Side Panel */}
+            <div className="w-full max-w-sm">
+              <div className="bg-white/80 rounded-2xl shadow-lg border border-purple-100 p-6">
+                <h2 className="text-xl font-semibold text-purple-900 mb-4">Assignments</h2>
+                {Array.isArray((course as any).assignments) && (course as any).assignments.length > 0 ? (
+                  <ul className="space-y-4">
+                    {(course as any).assignments.map((assignment: any) => (
+                      <li key={assignment.id} className="border-b border-purple-50 pb-2">
+                        <div className="font-medium text-purple-900">{assignment.title}</div>
+                        <div className="text-sm text-purple-600">{assignment.description}</div>
+                        <div className="text-xs text-purple-400 mt-1">
+                          Due: {new Date(assignment.dueDate).toLocaleDateString()}
                         </div>
-                      ))}
-                  </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-purple-400">No assignments yet.</div>
                 )}
               </div>
             </div>
-
-            {/* Course Info Sidebar */}
-            <div className="space-y-6">
-              {/* Instructor Info */}
-              <div className="bg-white/80 rounded-2xl shadow-lg border border-purple-100 p-6">
-                <h3 className="text-lg font-semibold text-purple-900 mb-4">Instructor</h3>
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
-                    <User2 className="w-6 h-6 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-purple-900">{course.instructor.name}</p>
-                    <p className="text-sm text-purple-600">{course.instructor.email}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Course Stats */}
-              <div className="bg-white/80 rounded-2xl shadow-lg border border-purple-100 p-6">
-                <h3 className="text-lg font-semibold text-purple-900 mb-4">Course Overview</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-purple-600">Total Lessons:</span>
-                    <span className="font-medium text-purple-900">{publishedLessons.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-purple-600">Students Enrolled:</span>
-                    <span className="font-medium text-purple-900">{course.enrollments.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-purple-600">Course Type:</span>
-                    <span className="font-medium text-purple-900">
-                      {course.isFree ? 'Free' : 'Paid'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-purple-600">Status:</span>
-                    <span className="font-medium text-purple-900">
-                      {course.isPublished ? 'Published' : 'Draft'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Progress (if enrolled) */}
-              {isEnrolled && (
-                <div className="bg-white/80 rounded-2xl shadow-lg border border-purple-100 p-6">
-                  <h3 className="text-lg font-semibold text-purple-900 mb-4">Your Progress</h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-purple-600">Progress:</span>
-                      <span className="font-medium text-purple-900">
-                        {course.enrollments.find(e => e.user.id === session?.user?.id)?.progress || 0}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-purple-200 rounded-full h-2">
-                      <div 
-                        className="bg-purple-600 h-2 rounded-full transition-all duration-300"
-                        style={{ 
-                          width: `${course.enrollments.find(e => e.user.id === session?.user?.id)?.progress || 0}%` 
-                        }}
-                      ></div>
-                    </div>
-                    <Button className="w-full bg-purple-600 hover:bg-purple-700">
-                      <Play className="w-4 h-4 mr-2" />
-                      Continue Learning
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* File Manager Section */}
-          <div className="mb-6">
-            <FileManager
-              mode={getFileManagerMode()}
-              courseId={params.id}
-              userId={session?.user?.id || ''}
-              userRole={session?.user?.role || 'STUDENT'}
-            />
           </div>
         </div>
       </DashboardLayout>

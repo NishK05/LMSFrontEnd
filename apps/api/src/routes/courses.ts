@@ -75,6 +75,7 @@ router.get('/:id', async (req, res, next) => {
             },
           },
         },
+        assignments: true, // <-- Add this line
       },
     })
 

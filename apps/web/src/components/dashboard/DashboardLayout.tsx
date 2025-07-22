@@ -37,7 +37,7 @@ export function DashboardLayout({ children, rightSidebar }: DashboardLayoutProps
       {/* Glass Top Bar */}
       <div
         className={clsx(
-          'sticky top-0 z-30 w-full flex items-center justify-between px-6 py-3',
+          'sticky top-0 z-30 w-full flex items-center justify-between px-12 py-5',
           'backdrop-blur-md bg-purple-400/60 rounded-b-2xl shadow-lg',
           'border-b border-purple-200',
           'transition-all duration-300',
@@ -50,23 +50,23 @@ export function DashboardLayout({ children, rightSidebar }: DashboardLayoutProps
         <button
           type="button"
           onClick={goToDashboard}
-          className="text-xl font-bold text-white drop-shadow-sm focus:outline-none hover:underline hover:opacity-90 transition"
+          className="text-2xl font-bold text-white drop-shadow-sm focus:outline-none hover:underline hover:opacity-90 transition"
           aria-label="Go to Dashboard"
         >
           {userName}'s Dashboard
         </button>
         <div className="flex items-center space-x-3">
           <Button variant="ghost" size="icon" onClick={() => router.push('/discussions')}>
-            <MessageCircle className="w-6 h-6 text-white/90" />
+            <MessageCircle className="w-7 h-7 text-white/90" />
           </Button>
           <Button variant="ghost" size="icon" onClick={() => router.push('/calendar')}>
-            <Calendar className="w-6 h-6 text-white/90" />
+            <Calendar className="w-7 h-7 text-white/90" />
           </Button>
           <Button variant="ghost" size="icon" onClick={() => router.push('/chatbot')}>
-            <Bot className="w-6 h-6 text-white/90" />
+            <Bot className="w-7 h-7 text-white/90" />
           </Button>
           <Button variant="ghost" size="icon" onClick={() => router.push('/settings')}>
-            <SettingsIcon className="w-6 h-6 text-white/90" />
+            <SettingsIcon className="w-7 h-7 text-white/90" />
           </Button>
         </div>
       </div>
