@@ -112,11 +112,12 @@ router.get('/posts/:postId', async (req: Request, res: Response) => {
       orderBy: { createdAt: 'asc' },
     })
     // Build 1-level nested reply tree
-    const replyMap: Record<string, any> = {}
+    type ReplyWithChildren = typeof allReplies[number] & { replies: ReplyWithChildren[] }
+    const replyMap: Record<string, ReplyWithChildren> = {}
     allReplies.forEach(r => {
       replyMap[r.id] = { ...r, replies: [] }
     })
-    const topLevelReplies = []
+    const topLevelReplies: ReplyWithChildren[] = []
     allReplies.forEach(r => {
       if (r.parentReplyId && replyMap[r.parentReplyId]) {
         replyMap[r.parentReplyId].replies.push(replyMap[r.id])

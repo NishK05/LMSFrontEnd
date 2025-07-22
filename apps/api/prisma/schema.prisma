@@ -30,6 +30,7 @@ model User {
   assignedCourses DiscussionCollaborator[] @relation("AssignedCourses")
   assignedBy DiscussionCollaborator[] @relation("AssignedBy")
   createdTags DiscussionTag[] @relation("CreatedTags")
+  grades      Grade[]
 
   @@map("users")
 }
@@ -44,6 +45,9 @@ model Course {
   isPublished  Boolean  @default(false)
   isFree       Boolean  @default(false)
   price        Float?
+  latePenalty  Float? // % penalty for late submissions (e.g., 10 for 10%)
+  gradeSections GradeSection[]
+  assignments   Assignment[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -51,7 +55,6 @@ model Course {
   instructor  User         @relation("InstructorCourses", fields: [instructorId], references: [id])
   lessons     Lesson[]
   enrollments Enrollment[]
-  assignments Assignment[]
   files       File[]   @relation("CourseFiles")
   folders     Folder[] @relation("CourseFolders")
   tags        DiscussionTag[]
@@ -115,12 +118,20 @@ model Progress {
 }
 
 model Assignment {
-  id          String   @id @default(cuid())
-  courseId    String
-  title       String
-  description String
-  dueDate     DateTime
-  course      Course   @relation(fields: [courseId], references: [id])
+  id            String   @id @default(cuid())
+  courseId      String
+  sectionId     String
+  name          String
+  description   String?
+  dueDate       DateTime
+  type          AssignmentType @default(STANDARD)
+  maxScore      Float   @default(100)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  course        Course   @relation(fields: [courseId], references: [id])
+  section       GradeSection @relation(fields: [sectionId], references: [id])
+  grades        Grade[]
 }
 
 model File {
@@ -220,6 +231,34 @@ model DiscussionCollaborator {
   assignedBy   User     @relation("AssignedBy", fields: [assignedById], references: [id])
 }
 
+model GradeSection {
+  id        String   @id @default(cuid())
+  courseId  String
+  name      String
+  weight    Float   // % of total grade (0-100)
+  order     Int     // for UI ordering
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  course    Course   @relation(fields: [courseId], references: [id])
+  assignments Assignment[]
+}
+
+model Grade {
+  id            String   @id @default(cuid())
+  assignmentId  String
+  studentId     String
+  score         Float
+  submittedAt   DateTime?
+  status        String   // "ON_TIME" | "LATE"
+  comment       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignment    Assignment @relation(fields: [assignmentId], references: [id])
+  student       User       @relation(fields: [studentId], references: [id])
+}
+
 enum UserRole {
   STUDENT
   TEACHER
@@ -229,4 +268,9 @@ enum UserRole {
 enum EnrollmentRole {
   STUDENT
   TEACHER
+}
+
+enum AssignmentType {
+  STANDARD
+  EXTRA_CREDIT
 } 

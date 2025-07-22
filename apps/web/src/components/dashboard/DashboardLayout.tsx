@@ -6,7 +6,8 @@ import {
   MessageCircle,
   Calendar,
   Bot,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  BookOpen
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -61,6 +62,9 @@ export function DashboardLayout({ children, rightSidebar }: DashboardLayoutProps
           </Button>
           <Button variant="ghost" size="icon" onClick={() => router.push('/calendar')}>
             <Calendar className="w-7 h-7 text-white/90" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => router.push('/gradebook')}>
+            <BookOpen className="w-7 h-7 text-white/90" />
           </Button>
           <Button variant="ghost" size="icon" onClick={() => router.push('/chatbot')}>
             <Bot className="w-7 h-7 text-white/90" />
