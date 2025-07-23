@@ -57,9 +57,10 @@ export async function deleteAssignment(courseId: string, assignmentId: string) {
 }
 
 export async function getGrades(courseId: string): Promise<Grade[]> {
-  return [
-    { id: 'grade1', assignmentId: 'assignment1', studentId: 'student1', score: 95, submittedAt: '', status: 'ON_TIME', comment: '', createdAt: '', updatedAt: '' }
-  ]
+  const res = await fetch(`/api/gradebook/${courseId}/grades`)
+  const data = await res.json()
+  if (data.success && data.data) return data.data
+  return []
 }
 
 export async function saveGrade(courseId: string, grade: Partial<Grade>) {
@@ -96,4 +97,4 @@ export async function getStudents(courseId: string): Promise<{ id: string; name:
   const data = await res.json()
   if (data.success && data.data) return data.data
   return []
-} 
+}

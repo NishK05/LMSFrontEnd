@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { GradebookCourse, Assignment, Grade, GradeStatus } from '../types'
 import { getAssignments, getGrades, getStudents, saveGrade } from '../api'
 import { useGradebookContext } from '../GradebookContext'
@@ -13,6 +13,9 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [inputMode, setInputMode] = useState<'raw' | 'percent'>('raw')
+  const [saving, setSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+  const prevGradesRef = useRef<Grade[]>([])
 
   useEffect(() => {
     setLoading(true)
@@ -30,14 +33,22 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
       .finally(() => setLoading(false))
   }, [course.id])
 
-  const handleGradeChange = async (assignmentId: string, value: number) => {
+  const handleGradeChange = async (assignmentId: string, value: number | '') => {
     setGrades(gs => {
       const idx = gs.findIndex(g => g.assignmentId === assignmentId && g.studentId === selectedStudent)
       const assignment = assignments.find(a => a.id === assignmentId)
       if (!assignment) return gs
+      if (value === '' || value === null || isNaN(Number(value))) {
+        // Remove grade if blank
+        if (idx !== -1) {
+          // Optionally, you could also delete from backend here
+          return gs.filter((g, i) => i !== idx)
+        }
+        return gs
+      }
       let newScore = value
       if (inputMode === 'percent') {
-        newScore = Math.round((value / 100) * assignment.maxScore)
+        newScore = Math.round((Number(value) / 100) * assignment.maxScore)
       }
       if (idx === -1) {
         // Create new grade
@@ -114,8 +125,34 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
     assignments,
     grades: studentGrades,
     latePenalty,
-    options: { onlyGraded: false }
+    options: { onlyGraded: true }
   })
+
+  // Remove auto-save-on-blur logic
+  // Add Save All Grades button
+  const handleSaveAll = async () => {
+    setSaving(true)
+    setSaveSuccess(false)
+    try {
+      // Save all grades for the selected student
+      await Promise.all(
+        grades.filter(g => g.studentId === selectedStudent).map(g => saveGrade(course.id, g))
+      )
+      setSaveSuccess(true)
+      prevGradesRef.current = JSON.parse(JSON.stringify(grades))
+    } catch (e) {
+      setError('Failed to save grades')
+    }
+    setSaving(false)
+  }
+
+  // Detect unsaved changes
+  const hasUnsaved = JSON.stringify(prevGradesRef.current.filter(g => g.studentId === selectedStudent)) !== JSON.stringify(grades.filter(g => g.studentId === selectedStudent))
+
+  useEffect(() => {
+    // On load, set prevGradesRef to loaded grades
+    prevGradesRef.current = JSON.parse(JSON.stringify(grades))
+  }, [selectedStudent, loading])
 
   return (
     <div>
@@ -145,6 +182,17 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
           >Percent</button>
         </div>
       </div>
+      {/* Save All Grades button */}
+      <div className="mb-4 flex items-center gap-4">
+        <button
+          className={`bg-purple-700 text-white px-4 py-2 rounded disabled:opacity-50`}
+          onClick={handleSaveAll}
+          disabled={saving || !hasUnsaved}
+        >
+          {saving ? 'Saving...' : 'Save All Grades'}
+        </button>
+        {saveSuccess && <span className="text-green-600 font-semibold">Grades saved!</span>}
+      </div>
       {/* Display final grade and breakdown */}
       <div className="mb-4">
         <span className="font-bold text-purple-700 text-xl">Final Grade: {final} / 100</span>
@@ -153,11 +201,17 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
             <div>
               <span className="font-semibold">Section Breakdown:</span>
               <ul className="ml-4 list-disc">
-                {Object.values(breakdown).map(b => (
-                  <li key={b.sectionId}>
-                    {sections.find(s => s.id === b.sectionId)?.name || 'Section'}: {b.mean !== null ? b.mean.toFixed(1) : '-'} ({b.percent}%)
-                  </li>
-                ))}
+                {Object.values(breakdown).map(b => {
+                  const sectionAssignments = assignments.filter(a => a.sectionId === b.sectionId)
+                  const totalPoints = sectionAssignments.reduce((sum, a) => sum + a.maxScore, 0)
+                  // mean is average score per assignment, so multiply by count to get total points awarded
+                  const pointsAwarded = (b.mean !== null && sectionAssignments.length > 0) ? (b.mean * sectionAssignments.length) : 0
+                  return (
+                    <li key={b.sectionId}>
+                      {sections.find(s => s.id === b.sectionId)?.name || 'Section'}: {b.mean !== null ? `${pointsAwarded.toFixed(2)} / ${totalPoints} (${b.percent}%)` : '-'}
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           )}
@@ -190,7 +244,7 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
                         min={0}
                         max={inputMode === 'percent' ? 100 : a.maxScore}
                         value={grade ? getGradeValue(a, grade) : ''}
-                        onChange={e => handleGradeChange(a.id, Number(e.target.value))}
+                        onChange={e => handleGradeChange(a.id, e.target.value === '' ? '' : Number(e.target.value))}
                         className="w-16 border rounded px-1"
                         placeholder={inputMode === 'percent' ? '%' : `0 / ${a.maxScore}`}
                       />
@@ -224,7 +278,6 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
                       <input
                         value={grade ? grade.comment || '' : ''}
                         onChange={e => handleCommentChange(a.id, e.target.value)}
-                        onBlur={() => handleCommentBlur(a.id)}
                         className="border rounded px-1"
                         placeholder="Feedback (optional)"
                       />

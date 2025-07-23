@@ -26,9 +26,9 @@ export function calculateFinalGrade({
   })
 
   // Map grades by assignmentId
-  const gradesByAssignment: Record<string, { score: number; submittedAt?: string | null }> = {}
+  const gradesByAssignment: Record<string, any> = {}
   grades.forEach(g => {
-    gradesByAssignment[g.assignmentId] = { score: g.score, submittedAt: g.submittedAt }
+    gradesByAssignment[g.assignmentId] = g
   })
 
   let total = 0
@@ -51,7 +51,8 @@ export function calculateFinalGrade({
         }
       }
       let score = grade.score
-      if (grade.submittedAt && a.dueDate && new Date(grade.submittedAt) > new Date(a.dueDate)) {
+      // Apply late penalty if status is LATE, or if submittedAt is after dueDate (legacy)
+      if ((grade as any).status === 'LATE' || (grade.submittedAt && a.dueDate && new Date(grade.submittedAt) > new Date(a.dueDate))) {
         score = Math.max(0, score * (1 - latePenalty / 100))
       }
       sum += score
@@ -65,5 +66,5 @@ export function calculateFinalGrade({
   }
   // Normalize if totalWeight < 100 (e.g., if some sections are skipped)
   const final = totalWeight > 0 ? (total / (totalWeight / 100)) : 0
-  return { final: Math.round(final * 10) / 10, breakdown }
+  return { final: Math.round(final * 100) / 100, breakdown }
 } 

@@ -60,6 +60,7 @@ model Course {
   tags        DiscussionTag[]
   posts       DiscussionPost[]
   collaborators DiscussionCollaborator[]
+  letterGradeSplits LetterGradeSplit[]
 
   @@map("courses")
 }
@@ -259,6 +260,18 @@ model Grade {
   student       User       @relation(fields: [studentId], references: [id])
 
   @@unique([assignmentId, studentId])
+}
+
+model LetterGradeSplit {
+  id         String   @id @default(cuid())
+  courseId   String
+  label      String   // e.g., "A+"
+  minPercent Float    // e.g., 97
+  order      Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  course     Course   @relation(fields: [courseId], references: [id])
 }
 
 enum UserRole {
