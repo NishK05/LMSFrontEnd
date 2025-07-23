@@ -2,6 +2,9 @@
 import { useEffect, useState } from 'react'
 import { GradebookCourse, GradeSection } from '../types'
 import { getSections, saveSections, getLatePenalty, saveLatePenalty } from '../api'
+import { getLetterGrades, saveLetterGrades } from '../api'
+import { getRounding, saveRounding } from '../api'
+import { LetterGradeSplit } from '../types'
 import { useGradebookContext } from '../GradebookContext'
 
 export function GradeSections({ course }: { course: GradebookCourse }) {
@@ -16,6 +19,18 @@ export function GradeSections({ course }: { course: GradebookCourse }) {
   const [latePenaltySaving, setLatePenaltySaving] = useState(false)
   const [latePenaltyError, setLatePenaltyError] = useState('')
   const [gradebookStyle, setGradebookStyle] = useState<'standard' | 'test'>('standard')
+  const [letterGradesEnabled, setLetterGradesEnabled] = useState(false)
+  const [letterGradeSplits, setLetterGradeSplits] = useState<LetterGradeSplit[]>([])
+  const [letterGradeSaving, setLetterGradeSaving] = useState(false)
+  const [letterGradeError, setLetterGradeError] = useState('')
+  const [letterGradeSuccess, setLetterGradeSuccess] = useState(false)
+  const [newLetterLabel, setNewLetterLabel] = useState('')
+  const [newLetterMin, setNewLetterMin] = useState<number | ''>('')
+  const [roundingEnabled, setRoundingEnabled] = useState(false)
+  const [rounding, setRounding] = useState<number>(2)
+  const [roundingSaving, setRoundingSaving] = useState(false)
+  const [roundingError, setRoundingError] = useState('')
+  const [roundingSuccess, setRoundingSuccess] = useState(false)
 
   // Fetch sections and late penalty on mount
   useEffect(() => {
@@ -32,6 +47,22 @@ export function GradeSections({ course }: { course: GradebookCourse }) {
       .catch(() => setError('Failed to fetch sections or late penalty'))
       .finally(() => setLoading(false))
   }, [course.id, setSections])
+
+  // Fetch letter grades on mount
+  useEffect(() => {
+    if (!letterGradesEnabled) return
+    getLetterGrades(course.id)
+      .then(splits => setLetterGradeSplits(splits.sort((a, b) => b.minPercent - a.minPercent)))
+      .catch(() => setLetterGradeError('Failed to fetch letter grades'))
+  }, [course.id, letterGradesEnabled])
+
+  // Fetch rounding on mount
+  useEffect(() => {
+    if (!roundingEnabled) return
+    getRounding(course.id)
+      .then(val => setRounding(val))
+      .catch(() => setRoundingError('Failed to fetch rounding'))
+  }, [course.id, roundingEnabled])
 
   // Calculate total weight
   const totalWeight = sections.reduce((sum, s) => sum + s.weight, 0)
@@ -84,6 +115,63 @@ export function GradeSections({ course }: { course: GradebookCourse }) {
       setLatePenaltyError(e.message || 'Failed to save late penalty')
     }
     setLatePenaltySaving(false)
+  }
+
+  const handleAddLetterGrade = () => {
+    if (!newLetterLabel.trim() || newLetterMin === '' || isNaN(Number(newLetterMin))) return
+    setLetterGradeSplits(prev => [
+      ...prev,
+      {
+        id: `new-${Date.now()}`,
+        courseId: course.id,
+        label: newLetterLabel.trim(),
+        minPercent: Number(newLetterMin),
+        order: prev.length + 1,
+        createdAt: '',
+        updatedAt: '',
+      }
+    ].sort((a, b) => b.minPercent - a.minPercent))
+    setNewLetterLabel('')
+    setNewLetterMin('')
+  }
+
+  const handleDeleteLetterGrade = (i: number) => {
+    setLetterGradeSplits(prev => prev.filter((_, idx) => idx !== i))
+  }
+
+  const handleLetterLabelChange = (i: number, label: string) => {
+    setLetterGradeSplits(prev => prev.map((s, idx) => idx === i ? { ...s, label } : s))
+  }
+  const handleLetterMinChange = (i: number, min: number) => {
+    setLetterGradeSplits(prev => prev.map((s, idx) => idx === i ? { ...s, minPercent: min } : s).sort((a, b) => b.minPercent - a.minPercent))
+  }
+
+  const handleSaveLetterGrades = async () => {
+    setLetterGradeSaving(true)
+    setLetterGradeError('')
+    setLetterGradeSuccess(false)
+    try {
+      const updated = await saveLetterGrades(course.id, letterGradeSplits)
+      setLetterGradeSplits(updated.sort((a, b) => b.minPercent - a.minPercent))
+      setLetterGradeSuccess(true)
+    } catch (e: any) {
+      setLetterGradeError(e.message || 'Failed to save letter grades')
+    }
+    setLetterGradeSaving(false)
+  }
+
+  const handleSaveRounding = async () => {
+    setRoundingSaving(true)
+    setRoundingError('')
+    setRoundingSuccess(false)
+    try {
+      const updated = await saveRounding(course.id, rounding)
+      setRounding(updated.rounding)
+      setRoundingSuccess(true)
+    } catch (e: any) {
+      setRoundingError(e.message || 'Failed to save rounding')
+    }
+    setRoundingSaving(false)
   }
 
   return (
@@ -185,6 +273,108 @@ export function GradeSections({ course }: { course: GradebookCourse }) {
                 </div>
                 {latePenaltyError && <div className="text-red-600 mt-2">{latePenaltyError}</div>}
               </div>
+              {/* Letter Grades Enable Checkbox and Splits UI moved here */}
+              <div className="mt-8 mb-4">
+                <label className="font-semibold mr-2">
+                  <input
+                    type="checkbox"
+                    checked={letterGradesEnabled}
+                    onChange={e => setLetterGradesEnabled(e.target.checked)}
+                    className="mr-2"
+                  />
+                  Enable Letter Grades
+                </label>
+              </div>
+              {letterGradesEnabled && (
+                <div className="mb-8">
+                  <h4 className="font-semibold mb-2">Letter Grade Splits</h4>
+                  <ul className="space-y-2 mb-4">
+                    {letterGradeSplits.map((split, i) => (
+                      <li key={split.id} className="flex items-center gap-3">
+                        <input
+                          className="border rounded px-2 py-1 w-20"
+                          value={split.label}
+                          onChange={e => handleLetterLabelChange(i, e.target.value)}
+                          placeholder="Label (e.g. A+)"
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={split.minPercent}
+                          onChange={e => handleLetterMinChange(i, Number(e.target.value))}
+                          className="w-20 border rounded px-1"
+                          placeholder="Min %"
+                        />
+                        <span className="text-xs text-purple-500">min %</span>
+                        <button className="text-red-500 ml-2" onClick={() => handleDeleteLetterGrade(i)}>Delete</button>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex items-center gap-2 mb-4">
+                    <input
+                      className="border rounded px-2 py-1 w-20"
+                      value={newLetterLabel}
+                      onChange={e => setNewLetterLabel(e.target.value)}
+                      placeholder="Label (e.g. A+)"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={newLetterMin}
+                      onChange={e => setNewLetterMin(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-20 border rounded px-1"
+                      placeholder="Min %"
+                    />
+                    <button className="bg-purple-600 text-white px-3 py-1 rounded" onClick={handleAddLetterGrade} disabled={!newLetterLabel.trim() || newLetterMin === ''}>Add</button>
+                  </div>
+                  <button
+                    className="bg-purple-700 text-white px-4 py-2 rounded mt-2 disabled:opacity-50"
+                    onClick={handleSaveLetterGrades}
+                    disabled={letterGradeSaving || letterGradeSplits.length === 0}
+                  >
+                    {letterGradeSaving ? 'Saving...' : 'Save Letter Grades'}
+                  </button>
+                  {letterGradeError && <div className="text-red-600 mt-2">{letterGradeError}</div>}
+                  {letterGradeSuccess && <div className="text-green-600 mt-2">Letter grades saved!</div>}
+                </div>
+              )}
+              {/* Rounding Option */}
+              <div className="mt-8 mb-4">
+                <label className="font-semibold mr-2">
+                  <input
+                    type="checkbox"
+                    checked={roundingEnabled}
+                    onChange={e => setRoundingEnabled(e.target.checked)}
+                    className="mr-2"
+                  />
+                  Change Rounding
+                </label>
+              </div>
+              {roundingEnabled && (
+                <div className="mb-8 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={5}
+                    value={rounding}
+                    onChange={e => setRounding(Number(e.target.value))}
+                    className="w-20 border rounded px-1"
+                    placeholder="Decimal places"
+                  />
+                  <span className="text-xs text-purple-500">decimal places</span>
+                  <button
+                    className="bg-purple-700 text-white px-3 py-1 rounded disabled:opacity-50"
+                    onClick={handleSaveRounding}
+                    disabled={roundingSaving}
+                  >
+                    {roundingSaving ? 'Saving...' : 'Save Rounding'}
+                  </button>
+                  {roundingError && <div className="text-red-600 ml-2">{roundingError}</div>}
+                  {roundingSuccess && <div className="text-green-600 ml-2">Rounding saved!</div>}
+                </div>
+              )}
             </>
           )}
         </>

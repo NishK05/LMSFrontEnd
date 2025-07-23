@@ -177,6 +177,9 @@ router.put('/:courseId/assignments/:assignmentId', requireAuth, async (req, res)
 router.delete('/:courseId/assignments/:assignmentId', requireAuth, async (req, res) => {
   const { assignmentId } = req.params;
   try {
+    // Delete all grades for this assignment first
+    await prisma.grade.deleteMany({ where: { assignmentId } });
+    // Now delete the assignment
     await prisma.assignment.delete({ where: { id: assignmentId } });
     res.json({ success: true, message: 'Assignment deleted' });
   } catch (error) {
@@ -261,6 +264,35 @@ router.put('/:courseId/late-penalty', requireAuth, async (req, res) => {
   }
 });
 
+// GET/PUT /api/gradebook/:courseId/rounding
+router.get('/:courseId/rounding', requireAuth, async (req, res) => {
+  const { courseId } = req.params;
+  try {
+    const course = await prisma.course.findUnique({ where: { id: courseId } });
+    if (!course) return res.status(404).json({ success: false, error: 'Course not found' });
+    res.json({ success: true, data: { rounding: course.rounding ?? 2 } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to fetch rounding' });
+  }
+});
+
+router.put('/:courseId/rounding', requireAuth, async (req, res) => {
+  const { courseId } = req.params;
+  const { rounding } = req.body;
+  if (typeof rounding !== 'number' || rounding < 0 || rounding > 5) {
+    return res.status(400).json({ success: false, error: 'rounding must be an integer between 0 and 5' });
+  }
+  try {
+    const course = await prisma.course.update({
+      where: { id: courseId },
+      data: { rounding },
+    });
+    res.json({ success: true, data: { rounding: course.rounding } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to save rounding' });
+  }
+});
+
 // GET /api/gradebook/:courseId/students
 router.get('/:courseId/students', requireAuth, async (req, res) => {
   const { courseId } = req.params;
@@ -273,6 +305,66 @@ router.get('/:courseId/students', requireAuth, async (req, res) => {
     res.json({ success: true, data: students });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Failed to fetch students' });
+  }
+});
+
+// GET/POST /api/gradebook/:courseId/letter-grades
+router.get('/:courseId/letter-grades', requireAuth, async (req, res) => {
+  const { courseId } = req.params;
+  try {
+    const splits = await prisma.letterGradeSplit.findMany({ where: { courseId } });
+    res.json({ success: true, data: splits });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to fetch letter grade splits' });
+  }
+});
+
+router.post('/:courseId/letter-grades', requireAuth, async (req, res) => {
+  const { courseId } = req.params;
+  const splits: any[] = req.body.splits; // Expecting { splits: [...] }
+  if (!Array.isArray(splits)) {
+    return res.status(400).json({ success: false, error: 'Splits array required' });
+  }
+  try {
+    // Get all existing split IDs for this course
+    const existing = await prisma.letterGradeSplit.findMany({
+      where: { courseId },
+      select: { id: true }
+    });
+    const existingIds = new Set(existing.map(s => s.id));
+    const incomingIds = new Set(splits.map(s => s.id).filter(Boolean));
+
+    // Upsert (create or update) each split
+    const upserts = await Promise.all(splits.map(split =>
+      prisma.letterGradeSplit.upsert({
+        where: { id: split.id || '' }, // '' will never match, so will create
+        update: {
+          label: split.label,
+          minPercent: split.minPercent,
+          order: split.order,
+        },
+        create: {
+          courseId,
+          label: split.label,
+          minPercent: split.minPercent,
+          order: split.order,
+        }
+      })
+    ));
+
+    // Delete splits that are in DB but not in the incoming array
+    const toDelete = [...existingIds].filter(id => !incomingIds.has(id));
+    if (toDelete.length > 0) {
+      await prisma.letterGradeSplit.deleteMany({
+        where: { id: { in: toDelete } }
+      });
+    }
+
+    // Return updated list
+    const updated = await prisma.letterGradeSplit.findMany({ where: { courseId } });
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to save letter grade splits' });
   }
 });
 

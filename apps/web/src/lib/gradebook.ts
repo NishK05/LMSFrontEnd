@@ -10,13 +10,17 @@ export function calculateFinalGrade({
   assignments,
   grades,
   latePenalty = 0,
-  options = {}
+  options = {},
+  rounding = 2,
+  letterSplits = []
 }: {
   sections: { id: string; weight: number }[]
   assignments: { id: string; sectionId: string; dueDate: string }[]
-  grades: { assignmentId: string; score: number; submittedAt?: string | null }[]
+  grades: { assignmentId: string; score: number; submittedAt?: string | null; status?: string }[]
   latePenalty?: number
   options?: { onlyGraded?: boolean }
+  rounding?: number
+  letterSplits?: { label: string; minPercent: number }[]
 }) {
   // Map assignments by section
   const assignmentsBySection: Record<string, { id: string; dueDate: string }[]> = {}
@@ -65,6 +69,16 @@ export function calculateFinalGrade({
     totalWeight += section.weight
   }
   // Normalize if totalWeight < 100 (e.g., if some sections are skipped)
-  const final = totalWeight > 0 ? (total / (totalWeight / 100)) : 0
-  return { final: Math.round(final * 100) / 100, breakdown }
+  let final = totalWeight > 0 ? (total / (totalWeight / 100)) : 0
+  // Apply rounding
+  final = Number(final.toFixed(rounding))
+  // Determine letter grade if splits provided
+  let letter: string | null = null
+  if (letterSplits && letterSplits.length > 0) {
+    // Sort splits descending by minPercent
+    const sorted = [...letterSplits].sort((a, b) => b.minPercent - a.minPercent)
+    const found = sorted.find(s => final >= s.minPercent)
+    letter = found ? found.label : 'N/A'
+  }
+  return { final, letter, breakdown }
 } 

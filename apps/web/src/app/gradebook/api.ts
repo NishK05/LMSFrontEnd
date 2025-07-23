@@ -1,4 +1,4 @@
-import { GradebookCourse, GradeSection, Assignment, Grade } from './types'
+import { GradebookCourse, GradeSection, Assignment, Grade, LetterGradeSplit } from './types'
 
 export async function getUserCourses(userId: string): Promise<GradebookCourse[]> {
   const res = await fetch(`/api/gradebook/courses?userId=${userId}`)
@@ -97,4 +97,40 @@ export async function getStudents(courseId: string): Promise<{ id: string; name:
   const data = await res.json()
   if (data.success && data.data) return data.data
   return []
+}
+
+export async function getLetterGrades(courseId: string): Promise<LetterGradeSplit[]> {
+  const res = await fetch(`/api/gradebook/${courseId}/letter-grades`)
+  const data = await res.json()
+  if (data.success && data.data) return data.data
+  return []
+}
+
+export async function saveLetterGrades(courseId: string, splits: LetterGradeSplit[]) {
+  const res = await fetch(`/api/gradebook/${courseId}/letter-grades`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ splits }),
+  })
+  const data = await res.json()
+  if (!data.success) throw new Error(data.error || 'Failed to save letter grades')
+  return data.data
+}
+
+export async function getRounding(courseId: string): Promise<number> {
+  const res = await fetch(`/api/gradebook/${courseId}/rounding`)
+  const data = await res.json()
+  if (data.success && data.data) return data.data.rounding
+  return 2
+}
+
+export async function saveRounding(courseId: string, rounding: number) {
+  const res = await fetch(`/api/gradebook/${courseId}/rounding`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rounding }),
+  })
+  const data = await res.json()
+  if (!data.success) throw new Error(data.error || 'Failed to save rounding')
+  return data.data
 }

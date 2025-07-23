@@ -46,6 +46,7 @@ model Course {
   isFree       Boolean  @default(false)
   price        Float?
   latePenalty  Float? // % penalty for late submissions (e.g., 10 for 10%)
+  rounding     Int?    // Number of decimal places for grade rounding
   gradeSections GradeSection[]
   assignments   Assignment[]
   createdAt    DateTime @default(now())

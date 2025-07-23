@@ -45,4 +45,14 @@ export interface Grade {
   comment?: string | null
   createdAt: string
   updatedAt: string
+}
+
+export interface LetterGradeSplit {
+  id: string
+  courseId: string
+  label: string
+  minPercent: number
+  order: number
+  createdAt: string
+  updatedAt: string
 } 

@@ -1,7 +1,7 @@
 "use client"
 import { useEffect, useState, useRef } from 'react'
 import { GradebookCourse, Assignment, Grade, GradeStatus } from '../types'
-import { getAssignments, getGrades, getStudents, saveGrade } from '../api'
+import { getAssignments, getGrades, getStudents, saveGrade, getLetterGrades, getRounding } from '../api'
 import { useGradebookContext } from '../GradebookContext'
 import { calculateFinalGrade } from '@/lib/gradebook'
 
@@ -16,17 +16,23 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
   const [saving, setSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const prevGradesRef = useRef<Grade[]>([])
+  const [letterSplits, setLetterSplits] = useState<{ label: string; minPercent: number }[]>([])
+  const [rounding, setRounding] = useState<number>(2)
 
   useEffect(() => {
     setLoading(true)
     Promise.all([
       getStudents(course.id),
       getAssignments(course.id),
-      getGrades(course.id)
+      getGrades(course.id),
+      getLetterGrades(course.id),
+      getRounding(course.id)
     ])
-      .then(([studentsData, assignmentsData, gradesData]) => {
+      .then(([studentsData, assignmentsData, gradesData, letterSplitsData, roundingData]) => {
         setStudents(studentsData)
         setGrades(gradesData)
+        setLetterSplits(letterSplitsData)
+        setRounding(roundingData)
         if (studentsData.length > 0) setSelectedStudent(studentsData[0].id)
       })
       .catch(() => setError('Failed to fetch students or grades'))
@@ -120,12 +126,14 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
   // Compute final grade and breakdown for selected student
   const studentGrades = grades.filter(g => g.studentId === selectedStudent)
   const latePenalty = course.latePenalty ?? 0
-  const { final, breakdown } = calculateFinalGrade({
+  const { final, letter, breakdown } = calculateFinalGrade({
     sections,
     assignments,
     grades: studentGrades,
     latePenalty,
-    options: { onlyGraded: true }
+    options: { onlyGraded: true },
+    rounding,
+    letterSplits
   })
 
   // Remove auto-save-on-blur logic
@@ -195,7 +203,12 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
       </div>
       {/* Display final grade and breakdown */}
       <div className="mb-4">
-        <span className="font-bold text-purple-700 text-xl">Final Grade: {final} / 100</span>
+        <span className="font-bold text-purple-700 text-xl">
+          Final Grade: {final}%
+          {letterSplits.length > 0 && (
+            <span className="ml-2">({letter})</span>
+          )}
+        </span>
         <div className="mt-2 text-sm">
           {Object.values(breakdown).length > 0 && (
             <div>
