@@ -26,7 +26,7 @@ export function GradebookSidebar() {
   }, [userId, setCourses, setLoading])
 
   return (
-    <aside className="w-64 bg-purple-50 border-r border-purple-100 p-4 h-full flex flex-col">
+    <aside className="w-48 bg-purple-50 border-r border-purple-100 p-2 h-full flex flex-col">
       <div className="font-semibold text-purple-700 mb-2">Courses</div>
       {loading ? (
         <div className="text-purple-400">Loading...</div>

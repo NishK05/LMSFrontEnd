@@ -7,17 +7,53 @@ export async function getUserCourses(userId: string): Promise<GradebookCourse[]>
   return []
 }
 
-// Keep the rest of the API stubs for now
 export async function getSections(courseId: string): Promise<GradeSection[]> {
-  return [
-    { id: 'section1', courseId, name: 'Homework', weight: 40, order: 1, createdAt: '', updatedAt: '' }
-  ]
+  const res = await fetch(`/api/gradebook/${courseId}/sections`)
+  const data = await res.json()
+  if (data.success && data.data) return data.data
+  return []
+}
+
+export async function saveSections(courseId: string, sections: GradeSection[]) {
+  const res = await fetch(`/api/gradebook/${courseId}/sections`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sections }),
+  })
+  const data = await res.json()
+  if (!data.success) throw new Error(data.error || 'Failed to save')
+  return data.data
 }
 
 export async function getAssignments(courseId: string): Promise<Assignment[]> {
-  return [
-    { id: 'assignment1', courseId, sectionId: 'section1', name: 'Quiz 1', description: 'A quiz', dueDate: '', type: 'STANDARD', maxScore: 100, createdAt: '', updatedAt: '' }
-  ]
+  const res = await fetch(`/api/gradebook/${courseId}/assignments`)
+  const data = await res.json()
+  if (data.success && data.data) return data.data
+  return []
+}
+
+export async function saveAssignment(courseId: string, assignment: Partial<Assignment>) {
+  const method = assignment.id ? 'PUT' : 'POST'
+  const url = assignment.id
+    ? `/api/gradebook/${courseId}/assignments/${assignment.id}`
+    : `/api/gradebook/${courseId}/assignments`
+  const res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(assignment),
+  })
+  const data = await res.json()
+  if (!data.success) throw new Error(data.error || 'Failed to save assignment')
+  return data.data
+}
+
+export async function deleteAssignment(courseId: string, assignmentId: string) {
+  const res = await fetch(`/api/gradebook/${courseId}/assignments/${assignmentId}`, {
+    method: 'DELETE',
+  })
+  const data = await res.json()
+  if (!data.success) throw new Error(data.error || 'Failed to delete assignment')
+  return data
 }
 
 export async function getGrades(courseId: string): Promise<Grade[]> {
@@ -26,13 +62,38 @@ export async function getGrades(courseId: string): Promise<Grade[]> {
   ]
 }
 
+export async function saveGrade(courseId: string, grade: Partial<Grade>) {
+  const res = await fetch(`/api/gradebook/${courseId}/grades`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(grade),
+  })
+  const data = await res.json()
+  if (!data.success) throw new Error(data.error || 'Failed to save grade')
+  return data.data
+}
+
 export async function getLatePenalty(courseId: string): Promise<number> {
-  return 10
+  const res = await fetch(`/api/gradebook/${courseId}/late-penalty`)
+  const data = await res.json()
+  if (data.success && data.data) return data.data.latePenalty
+  return 0
+}
+
+export async function saveLatePenalty(courseId: string, latePenalty: number) {
+  const res = await fetch(`/api/gradebook/${courseId}/late-penalty`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ latePenalty }),
+  })
+  const data = await res.json()
+  if (!data.success) throw new Error(data.error || 'Failed to save late penalty')
+  return data.data
 }
 
 export async function getStudents(courseId: string): Promise<{ id: string; name: string }[]> {
-  return [
-    { id: 'student1', name: 'Alice' },
-    { id: 'student2', name: 'Bob' }
-  ]
+  const res = await fetch(`/api/gradebook/${courseId}/students`)
+  const data = await res.json()
+  if (data.success && data.data) return data.data
+  return []
 } 

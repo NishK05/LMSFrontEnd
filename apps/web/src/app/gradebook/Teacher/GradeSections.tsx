@@ -1,41 +1,53 @@
 "use client"
 import { useEffect, useState } from 'react'
 import { GradebookCourse, GradeSection } from '../types'
-import { getSections } from '../api'
+import { getSections, saveSections, getLatePenalty, saveLatePenalty } from '../api'
+import { useGradebookContext } from '../GradebookContext'
 
 export function GradeSections({ course }: { course: GradebookCourse }) {
-  const [sections, setSections] = useState<GradeSection[]>([])
+  const { sections: contextSections, setSections } = useGradebookContext()
+  const [sections, setLocalSections] = useState<GradeSection[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [newName, setNewName] = useState('')
   const [newWeight, setNewWeight] = useState(0)
   const [saving, setSaving] = useState(false)
+  const [latePenalty, setLatePenalty] = useState<number | null>(null)
+  const [latePenaltySaving, setLatePenaltySaving] = useState(false)
+  const [latePenaltyError, setLatePenaltyError] = useState('')
 
-  // Fetch sections on mount
+  // Fetch sections and late penalty on mount
   useEffect(() => {
     setLoading(true)
-    getSections(course.id)
-      .then(data => setSections(data))
-      .catch(() => setError('Failed to fetch sections'))
+    Promise.all([
+      getSections(course.id),
+      getLatePenalty(course.id)
+    ])
+      .then(([sectionsData, penalty]) => {
+        setLocalSections(sectionsData)
+        setSections(sectionsData) // update context on load
+        setLatePenalty(penalty)
+      })
+      .catch(() => setError('Failed to fetch sections or late penalty'))
       .finally(() => setLoading(false))
-  }, [course.id])
+  }, [course.id, setSections])
 
   // Calculate total weight
   const totalWeight = sections.reduce((sum, s) => sum + s.weight, 0)
 
   // Handlers for editing
   const handleNameChange = (i: number, name: string) => {
-    setSections(sections => sections.map((s, idx) => idx === i ? { ...s, name } : s))
+    setLocalSections((prev: GradeSection[]) => prev.map((s, idx) => idx === i ? { ...s, name } : s))
   }
   const handleWeightChange = (i: number, weight: number) => {
-    setSections(sections => sections.map((s, idx) => idx === i ? { ...s, weight } : s))
+    setLocalSections((prev: GradeSection[]) => prev.map((s, idx) => idx === i ? { ...s, weight } : s))
   }
   const handleDelete = (i: number) => {
-    setSections(sections => sections.filter((_, idx) => idx !== i))
+    setLocalSections((prev: GradeSection[]) => prev.filter((_, idx) => idx !== i))
   }
   const handleAdd = () => {
     if (!newName.trim() || newWeight <= 0) return
-    setSections([...sections, {
+    setLocalSections((prev: GradeSection[]) => [...prev, {
       id: `new-${Date.now()}`,
       courseId: course.id,
       name: newName.trim(),
@@ -48,11 +60,29 @@ export function GradeSections({ course }: { course: GradebookCourse }) {
     setNewWeight(0)
   }
 
-  // TODO: Implement save logic (API call)
   const handleSave = async () => {
     setSaving(true)
-    // await saveSections(course.id, sections)
+    setError('')
+    try {
+      const updated = await saveSections(course.id, sections)
+      setLocalSections(updated)
+      setSections(updated) // update context after save
+    } catch (e: any) {
+      setError(e.message || 'Failed to save sections')
+    }
     setSaving(false)
+  }
+
+  const handleLatePenaltySave = async () => {
+    setLatePenaltySaving(true)
+    setLatePenaltyError('')
+    try {
+      const updated = await saveLatePenalty(course.id, latePenalty ?? 0)
+      setLatePenalty(updated.latePenalty)
+    } catch (e: any) {
+      setLatePenaltyError(e.message || 'Failed to save late penalty')
+    }
+    setLatePenaltySaving(false)
   }
 
   return (
@@ -119,6 +149,28 @@ export function GradeSections({ course }: { course: GradebookCourse }) {
             {saving ? 'Saving...' : 'Save Categories'}
           </button>
           {error && <div className="text-red-600 mt-2">{error}</div>}
+          <div className="mt-8">
+            <h4 className="font-semibold mb-2">Late Penalty (%)</h4>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={latePenalty ?? ''}
+                onChange={e => setLatePenalty(Number(e.target.value))}
+                className="w-20 border rounded px-2 py-1"
+                placeholder="%"
+              />
+              <button
+                className="bg-purple-700 text-white px-3 py-1 rounded disabled:opacity-50"
+                onClick={handleLatePenaltySave}
+                disabled={latePenaltySaving || latePenalty === null}
+              >
+                {latePenaltySaving ? 'Saving...' : 'Save Penalty'}
+              </button>
+            </div>
+            {latePenaltyError && <div className="text-red-600 mt-2">{latePenaltyError}</div>}
+          </div>
         </>
       )}
     </div>

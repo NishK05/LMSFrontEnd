@@ -257,6 +257,8 @@ model Grade {
 
   assignment    Assignment @relation(fields: [assignmentId], references: [id])
   student       User       @relation(fields: [studentId], references: [id])
+
+  @@unique([assignmentId, studentId])
 }
 
 enum UserRole {

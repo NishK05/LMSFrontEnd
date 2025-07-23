@@ -75,7 +75,7 @@ export function DashboardLayout({ children, rightSidebar }: DashboardLayoutProps
         </div>
       </div>
       {/* Main Content Layout */}
-      <div className="flex-1 flex flex-col md:flex-row gap-6 px-4 md:px-8 py-6 w-full max-w-7xl mx-auto">
+      <div className="flex-1 flex flex-col md:flex-row gap-2 px-2 md:px-4 py-6 w-full max-w-7xl mx-auto">
         {/* Main (left/center) */}
         <div className="flex-1 min-w-0">{children}</div>
         {/* Right Sidebar (To Do's) */}

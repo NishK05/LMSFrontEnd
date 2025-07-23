@@ -50,12 +50,64 @@ router.get('/courses', requireAuth, async (req, res) => {
 })
 
 // CRUD /api/gradebook/:courseId/sections
-router.get('/:courseId/sections', requireAuth, (req, res) => {
-  res.json({ success: true, data: [{ id: 'section1', name: 'Homework', weight: 40 }] })
-})
-router.post('/:courseId/sections', requireAuth, (req, res) => {
-  res.status(201).json({ success: true, data: { id: 'section2', ...req.body } })
-})
+router.get('/:courseId/sections', requireAuth, async (req, res) => {
+  const { courseId } = req.params;
+  try {
+    const sections = await prisma.gradeSection.findMany({ where: { courseId } });
+    res.json({ success: true, data: sections });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to fetch sections' });
+  }
+});
+
+router.post('/:courseId/sections', requireAuth, async (req, res) => {
+  const { courseId } = req.params;
+  const sections: any[] = req.body.sections; // Expecting { sections: [...] }
+  if (!Array.isArray(sections)) {
+    return res.status(400).json({ success: false, error: 'Sections array required' });
+  }
+  try {
+    // Get all existing section IDs for this course
+    const existing = await prisma.gradeSection.findMany({
+      where: { courseId },
+      select: { id: true }
+    });
+    const existingIds = new Set(existing.map(s => s.id));
+    const incomingIds = new Set(sections.map(s => s.id).filter(Boolean));
+
+    // Upsert (create or update) each section
+    const upserts = await Promise.all(sections.map(section =>
+      prisma.gradeSection.upsert({
+        where: { id: section.id || '' }, // '' will never match, so will create
+        update: {
+          name: section.name,
+          weight: section.weight,
+          order: section.order,
+        },
+        create: {
+          courseId,
+          name: section.name,
+          weight: section.weight,
+          order: section.order,
+        }
+      })
+    ));
+
+    // Delete sections that are in DB but not in the incoming array
+    const toDelete = [...existingIds].filter(id => !incomingIds.has(id));
+    if (toDelete.length > 0) {
+      await prisma.gradeSection.deleteMany({
+        where: { id: { in: toDelete } }
+      });
+    }
+
+    // Return updated list
+    const updated = await prisma.gradeSection.findMany({ where: { courseId } });
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to save sections' });
+  }
+});
 router.put('/:courseId/sections/:sectionId', requireAuth, (req, res) => {
   res.json({ success: true, data: { id: req.params.sectionId, ...req.body } })
 })
@@ -64,38 +116,164 @@ router.delete('/:courseId/sections/:sectionId', requireAuth, (req, res) => {
 })
 
 // CRUD /api/gradebook/:courseId/assignments
-router.get('/:courseId/assignments', requireAuth, (req, res) => {
-  res.json({ success: true, data: [{ id: 'assignment1', name: 'Quiz 1', sectionId: 'section1' }] })
-})
-router.post('/:courseId/assignments', requireAuth, (req, res) => {
-  res.status(201).json({ success: true, data: { id: 'assignment2', ...req.body } })
-})
-router.put('/:courseId/assignments/:assignmentId', requireAuth, (req, res) => {
-  res.json({ success: true, data: { id: req.params.assignmentId, ...req.body } })
-})
-router.delete('/:courseId/assignments/:assignmentId', requireAuth, (req, res) => {
-  res.json({ success: true, message: 'Assignment deleted' })
-})
+router.get('/:courseId/assignments', requireAuth, async (req, res) => {
+  const { courseId } = req.params;
+  try {
+    const assignments = await prisma.assignment.findMany({ where: { courseId } });
+    res.json({ success: true, data: assignments });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to fetch assignments' });
+  }
+});
+
+router.post('/:courseId/assignments', requireAuth, async (req, res) => {
+  const { courseId } = req.params;
+  const { name, dueDate, sectionId, description, maxScore, type } = req.body;
+  if (!name || !dueDate || !sectionId) {
+    return res.status(400).json({ success: false, error: 'Name, dueDate, and sectionId are required' });
+  }
+  try {
+    const assignment = await prisma.assignment.create({
+      data: {
+        courseId,
+        sectionId,
+        name,
+        dueDate: new Date(dueDate),
+        description,
+        maxScore: maxScore ?? 100,
+        type: type ?? 'STANDARD',
+      }
+    });
+    res.status(201).json({ success: true, data: assignment });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to create assignment' });
+  }
+});
+
+router.put('/:courseId/assignments/:assignmentId', requireAuth, async (req, res) => {
+  const { assignmentId } = req.params;
+  const { name, dueDate, sectionId, description, maxScore, type } = req.body;
+  if (!name || !dueDate || !sectionId) {
+    return res.status(400).json({ success: false, error: 'Name, dueDate, and sectionId are required' });
+  }
+  try {
+    const assignment = await prisma.assignment.update({
+      where: { id: assignmentId },
+      data: {
+        name,
+        dueDate: new Date(dueDate),
+        sectionId,
+        description,
+        maxScore: maxScore ?? 100,
+        type: type ?? 'STANDARD',
+      }
+    });
+    res.json({ success: true, data: assignment });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to update assignment' });
+  }
+});
+
+router.delete('/:courseId/assignments/:assignmentId', requireAuth, async (req, res) => {
+  const { assignmentId } = req.params;
+  try {
+    await prisma.assignment.delete({ where: { id: assignmentId } });
+    res.json({ success: true, message: 'Assignment deleted' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to delete assignment' });
+  }
+});
 
 // GET/POST /api/gradebook/:courseId/grades
-router.get('/:courseId/grades', requireAuth, (req, res) => {
-  res.json({ success: true, data: [{ assignmentId: 'assignment1', studentId: 'student1', score: 95 }] })
-})
-router.post('/:courseId/grades', requireAuth, (req, res) => {
-  res.status(201).json({ success: true, data: req.body })
-})
+router.get('/:courseId/grades', requireAuth, async (req, res) => {
+  const { courseId } = req.params;
+  try {
+    const grades = await prisma.grade.findMany({
+      where: {
+        assignment: { courseId }
+      }
+    });
+    res.json({ success: true, data: grades });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to fetch grades' });
+  }
+});
+
+router.post('/:courseId/grades', requireAuth, async (req, res) => {
+  const { assignmentId, studentId, score, submittedAt, status, comment } = req.body;
+  if (!assignmentId || !studentId) {
+    return res.status(400).json({ success: false, error: 'assignmentId and studentId are required' });
+  }
+  try {
+    const grade = await prisma.grade.upsert({
+      where: {
+        assignmentId_studentId: {
+          assignmentId,
+          studentId,
+        }
+      },
+      update: {
+        score,
+        submittedAt: submittedAt ? new Date(submittedAt) : null,
+        status,
+        comment,
+      },
+      create: {
+        assignmentId,
+        studentId,
+        score,
+        submittedAt: submittedAt ? new Date(submittedAt) : null,
+        status,
+        comment,
+      }
+    });
+    res.status(201).json({ success: true, data: grade });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to save grade' });
+  }
+});
 
 // GET/PUT /api/gradebook/:courseId/late-penalty
-router.get('/:courseId/late-penalty', requireAuth, (req, res) => {
-  res.json({ success: true, data: { latePenalty: 10 } })
-})
-router.put('/:courseId/late-penalty', requireAuth, (req, res) => {
-  res.json({ success: true, data: { latePenalty: req.body.latePenalty } })
-})
+router.get('/:courseId/late-penalty', requireAuth, async (req, res) => {
+  const { courseId } = req.params;
+  try {
+    const course = await prisma.course.findUnique({ where: { id: courseId } });
+    if (!course) return res.status(404).json({ success: false, error: 'Course not found' });
+    res.json({ success: true, data: { latePenalty: course.latePenalty ?? 0 } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to fetch late penalty' });
+  }
+});
+router.put('/:courseId/late-penalty', requireAuth, async (req, res) => {
+  const { courseId } = req.params;
+  const { latePenalty } = req.body;
+  if (typeof latePenalty !== 'number') {
+    return res.status(400).json({ success: false, error: 'latePenalty must be a number' });
+  }
+  try {
+    const course = await prisma.course.update({
+      where: { id: courseId },
+      data: { latePenalty },
+    });
+    res.json({ success: true, data: { latePenalty: course.latePenalty } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to save late penalty' });
+  }
+});
 
 // GET /api/gradebook/:courseId/students
-router.get('/:courseId/students', requireAuth, (req, res) => {
-  res.json({ success: true, data: [{ id: 'student1', name: 'Alice' }, { id: 'student2', name: 'Bob' }] })
-})
+router.get('/:courseId/students', requireAuth, async (req, res) => {
+  const { courseId } = req.params;
+  try {
+    const enrollments = await prisma.enrollment.findMany({
+      where: { courseId },
+      include: { user: { select: { id: true, name: true } } }
+    });
+    const students = enrollments.map(e => ({ id: e.user.id, name: e.user.name }));
+    res.json({ success: true, data: students });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to fetch students' });
+  }
+});
 
 export default router 

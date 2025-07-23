@@ -4,9 +4,18 @@ import { GradebookCourse } from '../types'
 import { GradeSections } from './GradeSections'
 import { Assignments } from './Assignments'
 import { StudentGrades } from './StudentGrades'
+import { useEffect } from 'react'
+import { getAssignments } from '../api'
+import { useGradebookContext } from '../GradebookContext'
 
 export function TeacherMain({ course }: { course: GradebookCourse }) {
   const [tab, setTab] = useState<'sections' | 'assignments' | 'grades'>('sections')
+  const { setAssignments } = useGradebookContext()
+
+  useEffect(() => {
+    getAssignments(course.id).then(setAssignments)
+  }, [course.id, setAssignments])
+
   return (
     <div>
       <div className="flex gap-4 mb-4">
