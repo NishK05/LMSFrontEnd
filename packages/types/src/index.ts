@@ -134,6 +134,8 @@ export interface LMSFile {
   uploadedAt: string
   folderId?: string | null
   visibleInClasses: string[] // course IDs
+  assignmentId?: string | null // assignment this file is attached to
+  protect?: boolean // whether the file is protected (for teacher/admin tag)
 }
 
 export interface LMSFolder {

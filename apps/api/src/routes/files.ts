@@ -54,7 +54,7 @@ router.post('/upload', upload.any(), async (req: Request, res: Response) => {
   try {
     // Expect: req.body.classIds (comma-separated), req.body.folderPath (optional for folders)
     // req.files: array of files (multer)
-    const { classIds, folderPath, protect } = req.body
+    const { classIds, folderPath, protect, assignmentId } = req.body
     const classIdArr = classIds ? classIds.split(',') : []
     const userId = req.body.userId || 'unknown' // In real app, get from session/JWT
     if (!req.files || classIdArr.length === 0) {
@@ -116,22 +116,22 @@ router.post('/upload', upload.any(), async (req: Request, res: Response) => {
         })
       }
       // Create file metadata
-      const fileMeta = await prisma.file.create({
-        data: {
-          filename: file.originalname,
-          path: relPath,
-          size: file.size,
-          mimetype: file.mimetype,
-          uploadedBy: userId,
-          folderId: folder ? folder.id : undefined,
-          protect: protect === 'true' || protect === true ? true : false,
-          originalPath: filePath,
-          protectedPath: protectedFilePath || undefined,
-          courses: {
-            connect: classIdArr.map((id: string) => ({ id })),
-          },
-        } as any,
-      })
+      const fileCreateData: any = {
+        filename: file.originalname,
+        path: relPath,
+        size: file.size,
+        mimetype: file.mimetype,
+        uploadedBy: userId,
+        folderId: folder ? folder.id : undefined,
+        protect: protect === 'true' || protect === true ? true : false,
+        originalPath: filePath,
+        protectedPath: protectedFilePath || undefined,
+        courses: {
+          connect: classIdArr.map((id: string) => ({ id })),
+        },
+      }
+      if (assignmentId) fileCreateData.assignmentId = assignmentId
+      const fileMeta = await prisma.file.create({ data: fileCreateData })
       results.push(fileMeta)
       // --- Trigger Python microservice ingest ---
       try {
@@ -186,7 +186,8 @@ router.get('/course/:courseId', async (req: Request, res: Response) => {
         uploadedBy: true,
         uploadedAt: true,
         protect: true,
-      } as any, // allow 'protect' field
+        assignmentId: true, // include assignmentId for frontend tagging
+      } as any, // allow 'protect' and 'assignmentId' field
     })
     res.json({ success: true, data: { folders, files } })
   } catch (error) {

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import type { FileManagerMode, LMSFile, LMSFolder } from '@lms/types'
 import { Button } from '@lms/ui'
 import { Folder as FolderIcon, File as FileIcon, Upload, Download, Trash2, Edit, Loader2, CheckCircle, XCircle, Users, Move, MoreHorizontal } from 'lucide-react'
+import { getAssignments } from '../../app/gradebook/api'
 
 interface FileManagerProps {
   mode: FileManagerMode
@@ -46,6 +47,7 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
   const [actionLoading, setActionLoading] = useState(false)
   const [previewFile, setPreviewFile] = useState<LMSFile | null>(null)
   const [protectDocuments, setProtectDocuments] = useState(false)
+  const [assignments, setAssignments] = useState<any[]>([])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -93,6 +95,8 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
   }
   useEffect(() => {
     fetchFiles()
+    // Fetch assignments for assignment tags
+    getAssignments(courseId).then(setAssignments).catch(() => setAssignments([]))
   }, [courseId, currentPath])
 
   // Handle file/folder upload
@@ -388,10 +392,6 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
             <thead>
               <tr className="text-purple-700 border-b border-purple-200">
                 <th className="text-left py-3 px-2">Name</th>
-                <th className="text-left py-3 px-2 hidden md:table-cell">Type</th>
-                <th className="text-left py-3 px-2 hidden lg:table-cell">Size</th>
-                <th className="text-left py-3 px-2 hidden lg:table-cell">Uploaded</th>
-                <th className="text-left py-3 px-2 hidden md:table-cell">Visible In</th>
                 <th className="text-left py-3 px-2">Actions</th>
               </tr>
             </thead>
@@ -407,12 +407,6 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
                       <FolderIcon className="w-5 h-5 text-purple-400" />
                       <span className="font-medium text-purple-900">{folder.name}</span>
                     </div>
-                  </td>
-                  <td className="py-3 px-2 hidden md:table-cell">Folder</td>
-                  <td className="py-3 px-2 hidden lg:table-cell">-</td>
-                  <td className="py-3 px-2 hidden lg:table-cell">{new Date(folder.createdAt).toLocaleDateString()}</td>
-                  <td className="py-3 px-2 hidden md:table-cell">
-                    <span className="text-xs text-purple-500">{folder.visibleInClasses?.join(', ') || courseId}</span>
                   </td>
                   <td className="py-3 px-2">
                     <div className="flex gap-1">
@@ -445,13 +439,17 @@ export function FileManager({ mode, courseId, userId, userRole }: FileManagerPro
                     <div className="flex items-center gap-2">
                       <FileIcon className="w-5 h-5 text-purple-400" />
                       <span className="font-medium text-purple-900">{file.filename}</span>
+                      {file.assignmentId && (
+                        <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">
+                          Assignment: {assignments.find(a => a.id === file.assignmentId)?.name || 'Unknown'}
+                        </span>
+                      )}
+                      {(file.protect && (userRole === 'TEACHER' || userRole === 'ADMIN')) && (
+                        <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+                          Protected
+                        </span>
+                      )}
                     </div>
-                  </td>
-                  <td className="py-3 px-2 hidden md:table-cell">{file.mimetype.split('/')[0]}</td>
-                  <td className="py-3 px-2 hidden lg:table-cell">{(file.size / 1024).toFixed(1)} KB</td>
-                  <td className="py-3 px-2 hidden lg:table-cell">{new Date(file.uploadedAt).toLocaleDateString()}</td>
-                  <td className="py-3 px-2 hidden md:table-cell">
-                    <span className="text-xs text-purple-500">{file.visibleInClasses?.join(', ') || courseId}</span>
                   </td>
                   <td className="py-3 px-2">
                     <div className="flex gap-1">
