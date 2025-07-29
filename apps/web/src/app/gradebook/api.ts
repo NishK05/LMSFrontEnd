@@ -56,8 +56,18 @@ export async function deleteAssignment(courseId: string, assignmentId: string) {
   return data
 }
 
-export async function getGrades(courseId: string): Promise<Grade[]> {
-  const res = await fetch(`/api/gradebook/${courseId}/grades`)
+export async function getGrades(courseId: string, role?: string): Promise<Grade[]> {
+  let url = `/api/gradebook/${courseId}/grades`
+  if (role) {
+    url += `?role=${role}`
+    // For students, we need to also pass the user ID
+    if (role === 'STUDENT') {
+      // Get the current user ID from the session or localStorage
+      // For now, we'll let the backend handle this, but in a real app you'd get the user ID
+      // url += `&userId=${userId}`
+    }
+  }
+  const res = await fetch(url)
   const data = await res.json()
   if (data.success && data.data) return data.data
   return []
@@ -71,6 +81,17 @@ export async function saveGrade(courseId: string, grade: Partial<Grade>) {
   })
   const data = await res.json()
   if (!data.success) throw new Error(data.error || 'Failed to save grade')
+  return data.data
+}
+
+export async function saveGradesBulk(courseId: string, grades: any[]) {
+  const res = await fetch(`/api/gradebook/${courseId}/grades/bulk`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ grades }),
+  })
+  const data = await res.json()
+  if (!data.success) throw new Error(data.error || 'Failed to save grades')
   return data.data
 }
 

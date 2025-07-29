@@ -1,23 +1,71 @@
 "use client"
 import { useEffect, useState, useRef } from 'react'
 import { GradebookCourse, Assignment, Grade, GradeStatus } from '../types'
-import { getAssignments, getGrades, getStudents, saveGrade, getLetterGrades, getRounding } from '../api'
+import { getAssignments, getGrades, getStudents, saveGradesBulk, getLetterGrades, getRounding } from '../api'
 import { useGradebookContext } from '../GradebookContext'
 import { calculateFinalGrade } from '@/lib/gradebook'
+import AssignmentViewerModal from '@/components/assignments/AssignmentViewerModal'
+
+interface Submission {
+  id: string
+  assignmentId: string
+  studentId: string
+  order: number
+  status: string
+  createdAt: string
+  file: {
+    id: string
+    filename: string
+  }
+}
 
 export function StudentGrades({ course }: { course: GradebookCourse }) {
   const { assignments, sections } = useGradebookContext()
   const [students, setStudents] = useState<{ id: string; name: string }[]>([])
   const [grades, setGrades] = useState<Grade[]>([])
+  const [submissions, setSubmissions] = useState<Submission[]>([])
   const [selectedStudent, setSelectedStudent] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [inputMode, setInputMode] = useState<'raw' | 'percent'>('raw')
   const [saving, setSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [publishSuccess, setPublishSuccess] = useState(false)
   const prevGradesRef = useRef<Grade[]>([])
   const [letterSplits, setLetterSplits] = useState<{ label: string; minPercent: number }[]>([])
   const [rounding, setRounding] = useState<number>(2)
+  const [showAssignmentModal, setShowAssignmentModal] = useState<{ assignmentId: string, assignmentName: string } | null>(null)
+
+  const refreshGrades = async () => {
+    try {
+      const gradesData = await getGrades(course.id)
+      setGrades(gradesData)
+      prevGradesRef.current = JSON.parse(JSON.stringify(gradesData))
+      // Also refresh submissions
+      if (selectedStudent) {
+        await fetchSubmissions(selectedStudent)
+      }
+    } catch (err) {
+      setError('Failed to refresh grades')
+    }
+  }
+
+  // Fetch submissions for the selected student
+  const fetchSubmissions = async (studentId: string) => {
+    try {
+      const submissionsPromises = assignments.map(async (assignment) => {
+        const response = await fetch(`/api/assignments/${assignment.id}/submissions/${studentId}`)
+        const data = await response.json()
+        return data.data || []
+      })
+      const submissionsArrays = await Promise.all(submissionsPromises)
+      const allSubmissions = submissionsArrays.flat()
+      setSubmissions(allSubmissions)
+    } catch (err) {
+      console.error('Failed to fetch submissions:', err)
+      setSubmissions([])
+    }
+  }
 
   useEffect(() => {
     setLoading(true)
@@ -39,7 +87,14 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
       .finally(() => setLoading(false))
   }, [course.id])
 
-  const handleGradeChange = async (assignmentId: string, value: number | '') => {
+  // Fetch submissions when selected student changes
+  useEffect(() => {
+    if (selectedStudent && assignments.length > 0) {
+      fetchSubmissions(selectedStudent)
+    }
+  }, [selectedStudent, assignments])
+
+  const handleGradeChange = (assignmentId: string, value: number | '') => {
     setGrades(gs => {
       const idx = gs.findIndex(g => g.assignmentId === assignmentId && g.studentId === selectedStudent)
       const assignment = assignments.find(a => a.id === assignmentId)
@@ -47,7 +102,6 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
       if (value === '' || value === null || isNaN(Number(value))) {
         // Remove grade if blank
         if (idx !== -1) {
-          // Optionally, you could also delete from backend here
           return gs.filter((g, i) => i !== idx)
         }
         return gs
@@ -66,19 +120,13 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
           submittedAt: '',
           status: 'ON_TIME' as GradeStatus,
           comment: '',
+          isPublished: false,
           createdAt: '',
           updatedAt: '',
         }
-        saveGrade(course.id, newGrade).then(saved => {
-          setGrades(current => current.map(g => g === newGrade ? saved : g))
-        })
         return [...gs, newGrade]
       } else {
-        const updated = gs.map((g, i) => i === idx ? { ...g, score: newScore } : g)
-        saveGrade(course.id, updated[idx]).then(saved => {
-          setGrades(current => current.map(g => g.assignmentId === saved.assignmentId && g.studentId === saved.studentId ? saved : g))
-        })
-        return updated
+        return gs.map((g, i) => i === idx ? { ...g, score: newScore } : g)
       }
     })
   }
@@ -95,18 +143,8 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
     setGrades(gs => {
       const idx = gs.findIndex(g => g.assignmentId === assignmentId && g.studentId === selectedStudent)
       if (idx === -1) return gs
-      const updated = gs.map((g, i) => i === idx ? { ...g, comment: value } : g)
-      return updated
+      return gs.map((g, i) => i === idx ? { ...g, comment: value } : g)
     })
-  }
-
-  const handleCommentBlur = (assignmentId: string) => {
-    const grade = grades.find(g => g.assignmentId === assignmentId && g.studentId === selectedStudent)
-    if (grade) {
-      saveGrade(course.id, grade).then(saved => {
-        setGrades(current => current.map(g => g.assignmentId === saved.assignmentId && g.studentId === saved.studentId ? saved : g))
-      })
-    }
   }
 
   const handleStatusChange = (assignmentId: string, value: string) => {
@@ -136,16 +174,13 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
     letterSplits
   })
 
-  // Remove auto-save-on-blur logic
-  // Add Save All Grades button
-  const handleSaveAll = async () => {
+  const handleSaveGrades = async () => {
     setSaving(true)
     setSaveSuccess(false)
+    setPublishSuccess(false)
     try {
-      // Save all grades for the selected student
-      await Promise.all(
-        grades.filter(g => g.studentId === selectedStudent).map(g => saveGrade(course.id, g))
-      )
+      const studentGradesToSave = grades.filter(g => g.studentId === selectedStudent)
+      await saveGradesBulk(course.id, studentGradesToSave)
       setSaveSuccess(true)
       prevGradesRef.current = JSON.parse(JSON.stringify(grades))
     } catch (e) {
@@ -154,8 +189,29 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
     setSaving(false)
   }
 
-  // Detect unsaved changes
-  const hasUnsaved = JSON.stringify(prevGradesRef.current.filter(g => g.studentId === selectedStudent)) !== JSON.stringify(grades.filter(g => g.studentId === selectedStudent))
+  const handlePublishGrades = async () => {
+    setSaving(true)
+    setSaveSuccess(false)
+    setPublishSuccess(false)
+    try {
+      const studentGradesToPublish = grades.filter(g => g.studentId === selectedStudent).map(g => ({ ...g, publish: true }))
+      await saveGradesBulk(course.id, studentGradesToPublish)
+      setPublishSuccess(true)
+      prevGradesRef.current = JSON.parse(JSON.stringify(grades))
+    } catch (e) {
+      setError('Failed to publish grades')
+    }
+    setSaving(false)
+  }
+
+  // Detect unsaved changes and unpublished grades
+  const hasUnsavedChanges = JSON.stringify(prevGradesRef.current.filter(g => g.studentId === selectedStudent)) !== JSON.stringify(grades.filter(g => g.studentId === selectedStudent))
+  
+  // Check if there are any grades that are saved but not published
+  const hasUnpublishedGrades = grades.filter(g => g.studentId === selectedStudent).some(g => !g.isPublished)
+
+  // Publish button should be active if there are unpublished grades OR unsaved changes
+  const canPublish = hasUnpublishedGrades || hasUnsavedChanges
 
   useEffect(() => {
     // On load, set prevGradesRef to loaded grades
@@ -190,16 +246,24 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
           >Percent</button>
         </div>
       </div>
-      {/* Save All Grades button */}
+      {/* Save and Publish buttons */}
       <div className="mb-4 flex items-center gap-4">
         <button
-          className={`bg-purple-700 text-white px-4 py-2 rounded disabled:opacity-50`}
-          onClick={handleSaveAll}
-          disabled={saving || !hasUnsaved}
+          className={`bg-purple-600 text-white px-4 py-2 rounded disabled:opacity-50`}
+          onClick={handleSaveGrades}
+          disabled={saving || !hasUnsavedChanges}
         >
-          {saving ? 'Saving...' : 'Save All Grades'}
+          {saving ? 'Saving...' : 'Save Grades'}
+        </button>
+        <button
+          className={`bg-green-600 text-white px-4 py-2 rounded disabled:opacity-50`}
+          onClick={handlePublishGrades}
+          disabled={saving || !canPublish}
+        >
+          {saving ? 'Publishing...' : 'Publish Grades'}
         </button>
         {saveSuccess && <span className="text-green-600 font-semibold">Grades saved!</span>}
+        {publishSuccess && <span className="text-green-600 font-semibold">Grades published!</span>}
       </div>
       {/* Display final grade and breakdown */}
       <div className="mb-4">
@@ -246,40 +310,51 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
               </tr>
             </thead>
             <tbody>
-              {realAssignments.map(a => {
-                const grade: Grade | undefined = grades.find(g => g.assignmentId === a.id && g.studentId === selectedStudent)
-                return (
-                  <tr key={a.id}>
-                    <td className="border px-2 py-1">{a.name}</td>
-                    <td className="border px-2 py-1">
-                      <input
-                        type="number"
-                        min={0}
-                        max={inputMode === 'percent' ? 100 : a.maxScore}
-                        value={grade ? getGradeValue(a, grade) : ''}
-                        onChange={e => handleGradeChange(a.id, e.target.value === '' ? '' : Number(e.target.value))}
-                        className="w-16 border rounded px-1"
-                        placeholder={inputMode === 'percent' ? '%' : `0 / ${a.maxScore}`}
-                      />
-                      <span className="ml-1 text-xs text-gray-500">
-                        {inputMode === 'percent' ? '%' : `/ ${a.maxScore}`}
-                      </span>
-                    </td>
-                    <td className="border px-2 py-1">
-                      {grade && grade.submittedAt ? (
+                              {realAssignments.map(a => {
+                  const grade: Grade | undefined = grades.find(g => g.assignmentId === a.id && g.studentId === selectedStudent)
+                  const submission: Submission | undefined = submissions.find(s => s.assignmentId === a.id && s.studentId === selectedStudent)
+                  const hasSubmission = submission !== undefined
+                  const isSubmitted = hasSubmission || (grade && grade.submittedAt)
+                  const isLate = submission && submission.status === 'LATE'
+
+                  return (
+                    <tr key={a.id}>
+                      <td className="border px-2 py-1">
+                        <button
+                          className="text-blue-700 underline hover:text-blue-900 font-medium"
+                          onClick={() => setShowAssignmentModal({ assignmentId: a.id, assignmentName: a.name })}
+                          type="button"
+                        >
+                          {a.name}
+                        </button>
+                      </td>
+                      <td className="border px-2 py-1">
                         <input
-                          type="date"
-                          value={grade.submittedAt.split('T')[0]}
-                          onChange={e => setGrades(gs => gs.map(g => g.assignmentId === a.id && g.studentId === selectedStudent ? { ...g, submittedAt: e.target.value } : g))}
-                          className="w-28 border rounded px-1"
+                          type="number"
+                          min={0}
+                          max={inputMode === 'percent' ? 100 : a.maxScore}
+                          value={grade ? getGradeValue(a, grade) : ''}
+                          onChange={e => handleGradeChange(a.id, e.target.value === '' ? '' : Number(e.target.value))}
+                          className="w-16 border rounded px-1"
+                          placeholder={inputMode === 'percent' ? '%' : `0 / ${a.maxScore}`}
                         />
-                      ) : (
-                        <span className="text-xs text-red-500">Not Submitted</span>
-                      )}
-                    </td>
+                        <span className="ml-1 text-xs text-gray-500">
+                          {inputMode === 'percent' ? '%' : `/ ${a.maxScore}`}
+                        </span>
+                      </td>
+                      <td className="border px-2 py-1">
+                        {isSubmitted ? (
+                          <span className="text-green-600 font-semibold">Submitted</span>
+                        ) : (
+                          <span className="text-red-500 font-semibold">Not Submitted</span>
+                        )}
+                        {isLate && (
+                          <span className="ml-2 text-xs text-red-500"> (Late)</span>
+                        )}
+                      </td>
                     <td className="border px-2 py-1">
                       <select
-                        value={grade ? grade.status : 'ON_TIME'}
+                        value={submission ? submission.status : (grade ? grade.status : 'ON_TIME')}
                         onChange={e => handleStatusChange(a.id, e.target.value)}
                         className="border rounded px-1"
                       >
@@ -301,6 +376,20 @@ export function StudentGrades({ course }: { course: GradebookCourse }) {
               })}
             </tbody>
           </table>
+          {/* AssignmentViewerModal for selected assignment/student */}
+          {showAssignmentModal && (
+            <AssignmentViewerModal
+              assignmentId={showAssignmentModal.assignmentId}
+              assignmentName={showAssignmentModal.assignmentName}
+              studentId={selectedStudent}
+              studentName={students.find(s => s.id === selectedStudent)?.name || ''}
+              courseId={course.id}
+              open={!!showAssignmentModal}
+              onClose={() => setShowAssignmentModal(null)}
+              isTeacher={true}
+              onGradeSaved={refreshGrades}
+            />
+          )}
         </>
       )}
     </div>

@@ -260,8 +260,10 @@ model Grade {
   submittedAt   DateTime?
   status        String   // "ON_TIME" | "LATE"
   comment       String?
+  isPublished   Boolean  @default(false) // Whether grade is visible to student
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  dueDateOverride DateTime? // Per-student due date override
 
   assignment    Assignment @relation(fields: [assignmentId], references: [id])
   student       User       @relation(fields: [studentId], references: [id])

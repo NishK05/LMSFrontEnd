@@ -1,10 +1,12 @@
 "use client"
 import { useEffect, useState } from 'react'
-import { GradebookCourse, Assignment, GradeSection, Grade } from '../types'
+import { useRouter } from 'next/navigation'
+import { GradebookCourse, Assignment, GradeSection, Grade, GradeStatus } from '../types'
 import { getAssignments, getGrades, getSections, getLatePenalty, getLetterGrades, getRounding } from '../api'
 import { calculateFinalGrade } from '@/lib/gradebook'
 
 export function MyGrades({ course }: { course: GradebookCourse }) {
+  const router = useRouter()
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [sections, setSections] = useState<GradeSection[]>([])
   const [grades, setGrades] = useState<Grade[]>([])
@@ -21,12 +23,16 @@ export function MyGrades({ course }: { course: GradebookCourse }) {
   const [whatIfActive, setWhatIfActive] = useState(false)
   const [inputMode, setInputMode] = useState<'raw' | 'percent'>('raw')
 
+  const handleAssignmentClick = (assignmentId: string) => {
+    router.push(`/courses/${course.id}/assignments/${assignmentId}`)
+  }
+
   useEffect(() => {
     setLoading(true)
     Promise.all([
       getAssignments(course.id),
       getSections(course.id),
-      getGrades(course.id),
+      getGrades(course.id, 'STUDENT'),
       getLatePenalty(course.id),
       getLetterGrades(course.id),
       getRounding(course.id)
@@ -103,8 +109,9 @@ export function MyGrades({ course }: { course: GradebookCourse }) {
           studentId,
           score: Number(newScore),
           submittedAt: '',
-          status: 'ON_TIME',
+          status: 'ON_TIME' as GradeStatus,
           comment: '',
+          isPublished: true,
           createdAt: '',
           updatedAt: '',
         }]
@@ -121,7 +128,7 @@ export function MyGrades({ course }: { course: GradebookCourse }) {
     }
   }
   const handleWhatIfStatusChange = (assignmentId: string, value: string) => {
-    setWhatIfGrades(gs => gs.map(g => g.assignmentId === assignmentId && g.studentId === studentId ? { ...g, status: value } : g))
+    setWhatIfGrades(gs => gs.map(g => g.assignmentId === assignmentId && g.studentId === studentId ? { ...g, status: value as GradeStatus } : g))
   }
   const handleWhatIfSectionWeightChange = (sectionId: string, weight: number) => {
     setWhatIfSections(ss => ss.map(s => s.id === sectionId ? { ...s, weight } : s))
@@ -242,7 +249,12 @@ export function MyGrades({ course }: { course: GradebookCourse }) {
                           placeholder="Assignment name"
                         />
                       ) : (
-                        a.name
+                        <button
+                          onClick={() => handleAssignmentClick(a.id)}
+                          className="text-blue-600 hover:text-blue-800 underline font-medium cursor-pointer"
+                        >
+                          {a.name}
+                        </button>
                       )}
                     </td>
                     <td className="border px-2 py-1">

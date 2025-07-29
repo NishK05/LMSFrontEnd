@@ -43,6 +43,7 @@ export interface Grade {
   submittedAt?: string | null
   status: GradeStatus
   comment?: string | null
+  isPublished: boolean
   createdAt: string
   updatedAt: string
 }

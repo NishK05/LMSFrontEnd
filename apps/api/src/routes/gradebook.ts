@@ -190,11 +190,20 @@ router.delete('/:courseId/assignments/:assignmentId', requireAuth, async (req, r
 // GET/POST /api/gradebook/:courseId/grades
 router.get('/:courseId/grades', requireAuth, async (req, res) => {
   const { courseId } = req.params;
+  const { userId, role } = req.query;
+  
   try {
+    let whereClause: any = {
+      assignment: { courseId }
+    };
+    
+    // If student, only show published grades
+    if (role === 'STUDENT') {
+      whereClause.isPublished = true;
+    }
+    
     const grades = await prisma.grade.findMany({
-      where: {
-        assignment: { courseId }
-      }
+      where: whereClause
     });
     res.json({ success: true, data: grades });
   } catch (error) {
@@ -235,6 +244,47 @@ router.post('/:courseId/grades', requireAuth, async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to save grade' });
   }
 });
+
+// Bulk save/publish grades
+router.post('/:courseId/grades/bulk', requireAuth, async (req, res) => {
+  const { courseId } = req.params
+  const grades = req.body.grades // Expecting { grades: [ ... ] }
+  if (!Array.isArray(grades)) {
+    return res.status(400).json({ success: false, error: 'grades array required' })
+  }
+  try {
+    const results = await Promise.all(grades.map(async (g: any) => {
+      // Upsert by assignmentId+studentId
+      return prisma.grade.upsert({
+        where: {
+          assignmentId_studentId: {
+            assignmentId: g.assignmentId,
+            studentId: g.studentId,
+          },
+        },
+        update: {
+          score: g.score,
+          comment: g.comment,
+          status: g.status,
+          dueDateOverride: g.dueDateOverride || null,
+          isPublished: g.publish ? true : g.isPublished, // Set isPublished if publish flag is true
+        },
+        create: {
+          assignmentId: g.assignmentId,
+          studentId: g.studentId,
+          score: g.score,
+          comment: g.comment,
+          status: g.status,
+          dueDateOverride: g.dueDateOverride || null,
+          isPublished: g.publish ? true : false, // Default to false unless publish flag is true
+        },
+      })
+    }))
+    res.json({ success: true, data: results })
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to save grades' })
+  }
+})
 
 // GET/PUT /api/gradebook/:courseId/late-penalty
 router.get('/:courseId/late-penalty', requireAuth, async (req, res) => {

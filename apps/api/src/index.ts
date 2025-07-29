@@ -14,6 +14,7 @@ import filesRoutes from './routes/files'
 import chatRoutes from './routes/chat'
 import discussionRoutes from './routes/discussions'
 import gradebookRoutes from './routes/gradebook'
+import submissionsRoutes from './routes/submissions'
 
 dotenv.config()
 
@@ -52,6 +53,7 @@ app.use('/api/files', filesRoutes)
 app.use('/api/chat', chatRoutes)
 app.use('/api/discussions', discussionRoutes)
 app.use('/api/gradebook', gradebookRoutes)
+app.use('/api/assignments/:assignmentId/submissions', submissionsRoutes)
 
 // Error handling
 app.use(errorHandler)

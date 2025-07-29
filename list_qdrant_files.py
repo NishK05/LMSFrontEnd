@@ -1,8 +1,8 @@
 from qdrant_client import QdrantClient
 
 # Set your collection name (class_id) here
-#COLLECTION = "cmd467a5e0003u095kfelvmb9"  # currently Ap bio<-- Replace with your actual class_id
-COLLECTION = "cmd4670kg0001u095k9h5k96k"  # currently Ap calc
+COLLECTION = "cmde9ngsy000312w7ovuwdmw8"  # currently Ap bio<-- Replace with your actual class_id
+#COLLECTION = "cmd4670kg0001u095k9h5k96k"  # currently Ap calc
 
 client = QdrantClient(host="localhost", port=6333)
 
