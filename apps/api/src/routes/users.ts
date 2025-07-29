@@ -1,9 +1,9 @@
 import { Router } from 'express'
-import { PrismaClient, UserRole } from '@prisma/client'
+import { UserRole } from '@prisma/client'
+import { prisma } from '../lib/prisma'
 import { createError } from '../middleware/errorHandler'
 
 const router: Router = Router()
-const prisma = new PrismaClient()
 
 // Get users with optional role filter
 router.get('/', async (req, res, next) => {

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '../lib/prisma'
 import { createError } from '../middleware/errorHandler'
 
 // Chat types (defined locally to avoid import issues)
@@ -19,7 +19,6 @@ interface ChatResponse {
 }
 
 const router: Router = Router()
-const prisma = new PrismaClient()
 
 // In-memory chat sessions (in production, this would be stored in a database)
 const chatSessions = new Map<string, any[]>()

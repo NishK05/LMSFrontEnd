@@ -1,9 +1,8 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '../lib/prisma'
 import { createError } from '../middleware/errorHandler'
 
 const router: Router = Router()
-const prisma = new PrismaClient()
 
 // Get all courses with instructor information
 router.get('/', async (req, res, next) => {

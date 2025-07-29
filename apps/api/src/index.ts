@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit'
 import dotenv from 'dotenv'
 
 import { errorHandler } from './middleware/errorHandler'
+import { prisma } from './lib/prisma'
 import authRoutes from './routes/auth'
 import courseRoutes from './routes/courses'
 import lessonRoutes from './routes/lessons'
@@ -67,13 +68,11 @@ app.use('*', (req, res) => {
 async function reingestFilesOnStartup() {
   try {
     console.log('🔄 Checking for files to re-ingest on startup...')
-    const { PrismaClient } = require('@prisma/client')
     const fs = require('fs')
     const path = require('path')
     const FormData = require('form-data')
     const fetch = require('node-fetch')
     
-    const prisma = new PrismaClient()
     const UPLOADS_DIR = path.join(__dirname, '../uploads')
     
     const files = await prisma.file.findMany({
@@ -127,19 +126,54 @@ async function reingestFilesOnStartup() {
       }
     }
     
-    await prisma.$disconnect()
     console.log('✅ Startup re-ingestion check complete')
   } catch (error) {
     console.error('❌ Error during startup re-ingestion:', error)
   }
 }
 
-app.listen(PORT, () => {
+// Graceful shutdown
+const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`)
   console.log(`📊 Health check: http://localhost:${PORT}/health`)
   
   // Run re-ingestion check after server starts
   setTimeout(reingestFilesOnStartup, 2000) // Wait 2 seconds for Python service to be ready
+})
+
+const gracefulShutdown = async (signal: string) => {
+  console.log(`\n🛑 Received ${signal}. Starting graceful shutdown...`)
+  
+  // Close server
+  server.close(() => {
+    console.log('✅ HTTP server closed')
+  })
+  
+  // Close database connections
+  try {
+    await prisma.$disconnect()
+    console.log('✅ Database connections closed')
+  } catch (error) {
+    console.error('❌ Error closing database connections:', error)
+  }
+  
+  // Exit process
+  process.exit(0)
+}
+
+// Listen for shutdown signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
+process.on('SIGINT', () => gracefulShutdown('SIGINT'))
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error)
+  gracefulShutdown('uncaughtException')
+})
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason)
+  gracefulShutdown('unhandledRejection')
 })
 
 export default app 

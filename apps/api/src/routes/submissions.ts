@@ -1,11 +1,10 @@
 import { Router, Request, Response } from 'express'
 import multer from 'multer'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '../lib/prisma'
 import path from 'path'
 import fs from 'fs'
 
 const router: Router = Router({ mergeParams: true })
-const prisma = new PrismaClient()
 const UPLOADS_DIR = path.join(__dirname, '../../uploads')
 
 if (!fs.existsSync(UPLOADS_DIR)) {

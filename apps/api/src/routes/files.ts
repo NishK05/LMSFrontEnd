@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import multer, { StorageEngine } from 'multer'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '../lib/prisma'
 import path from 'path'
 import fs from 'fs'
 // Use require for node-fetch v2 compatibility
@@ -8,7 +8,6 @@ const fetch = require('node-fetch')
 const FormData = require('form-data')
 
 const router: Router = Router()
-const prisma = new PrismaClient()
 const UPLOADS_DIR = path.join(__dirname, '../../uploads')
 
 // Ensure uploads directory exists
