@@ -103,10 +103,11 @@ router.get('/assignments', async (req, res, next) => {
     const assignments = enrollments.flatMap(enrollment =>
       enrollment.course.assignments.map(assignment => ({
         id: assignment.id,
-        title: assignment.title,
+        title: assignment.name, // Use 'name' field from schema
         description: assignment.description,
         dueDate: assignment.dueDate.toISOString(),
         courseTitle: enrollment.course.title,
+        courseId: enrollment.course.id, // Add courseId for navigation
       }))
     );
 
