@@ -138,6 +138,7 @@ model Assignment {
   grades        Grade[]
   files         File[]
   submissions   Submission[]
+  rubrics       Rubric[]
 }
 
 model File {
@@ -265,6 +266,7 @@ model Grade {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   dueDateOverride DateTime? // Per-student due date override
+  rubricSelections Json? // Array of checked rubric item IDs
 
   assignment    Assignment @relation(fields: [assignmentId], references: [id])
   student       User       @relation(fields: [studentId], references: [id])
@@ -301,6 +303,21 @@ model Submission {
   @@index([assignmentId, studentId, order])
 }
 
+model Rubric {
+  id            String   @id @default(cuid())
+  assignmentId  String
+  name          String
+  type          RubricType @default(MANUAL)
+  content       Json     // Stores the rubric structure as JSON
+  isActive      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignment    Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId])
+}
+
 enum UserRole {
   STUDENT
   TEACHER
@@ -315,4 +332,9 @@ enum EnrollmentRole {
 enum AssignmentType {
   STANDARD
   EXTRA_CREDIT
+}
+
+enum RubricType {
+  MANUAL
+  AI_GENERATED
 } 

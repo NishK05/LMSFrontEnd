@@ -42,6 +42,7 @@ interface Grade {
   status: string
   comment?: string | null
   isPublished: boolean
+  rubricSelections?: string[] // Array of checked rubric item IDs
   createdAt: string
   updatedAt: string
 }
@@ -223,7 +224,7 @@ export default function StudentDashboardPage() {
     }
 
     fetchAllGrades()
-  }, [showGrades, session?.user?.id, enrolledCourses.length])
+  }, [showGrades, session?.user?.id]) // Removed enrolledCourses.length from dependencies
 
   // Group assignments by due date
   const groupedAssignments = groupAssignmentsByDate(assignments)

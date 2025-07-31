@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { X, Download } from 'lucide-react'
+import { RubricViewer } from './RubricViewer'
 
 interface Submission {
   id: string
@@ -24,6 +25,7 @@ interface Grade {
   status: string
   submittedAt?: string
   isPublished?: boolean // Added for publish status
+  rubricSelections?: string[] // Array of checked rubric item IDs
 }
 
 interface AssignmentViewerModalProps {
@@ -62,9 +64,11 @@ export default function AssignmentViewerModal({
     comment: ''
   })
   const [saving, setSaving] = useState(false)
+  const [aiGrading, setAiGrading] = useState(false)
   const [inputMode, setInputMode] = useState<'raw' | 'percent'>('raw')
   const [assignment, setAssignment] = useState<any>(null)
   const [originalGrade, setOriginalGrade] = useState<Grade | null>(null)
+  const [rubricSelections, setRubricSelections] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!open) return
@@ -98,6 +102,10 @@ export default function AssignmentViewerModal({
           if (existingGrade) {
             setGrade(existingGrade)
             setOriginalGrade(existingGrade)
+            // Load existing rubric selections
+            if (existingGrade.rubricSelections) {
+              setRubricSelections(new Set(existingGrade.rubricSelections))
+            }
           }
         }
         setLoading(false)
@@ -159,6 +167,49 @@ export default function AssignmentViewerModal({
       alert('Failed to save grade')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleAIGrade = async () => {
+    setAiGrading(true)
+    try {
+      // Get the latest submission for this student
+      const submissionRes = await fetch(`/api/assignments/${assignmentId}/submissions/${studentId}`)
+      const submissionData = await submissionRes.json()
+      
+      if (!submissionData.success || !submissionData.data) {
+        alert('No submission found for this student')
+        return
+      }
+
+      const submission = submissionData.data
+
+      const res = await fetch(`/api/gradebook/${courseId}/assignments/${assignmentId}/ai-grade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          studentId
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        const aiResult = data.data
+        setGrade(prev => ({
+          ...prev,
+          score: aiResult.score,
+          comment: aiResult.feedback,
+          rubricSelections: aiResult.rubricSelections,
+          isPublished: false // AI grades are saved as drafts
+        }))
+        alert('AI grading completed! Review and save the grade.')
+      } else {
+        throw new Error(data.error)
+      }
+    } catch (err) {
+      console.error('AI grading error:', err)
+      alert('Failed to grade with AI')
+    } finally {
+      setAiGrading(false)
     }
   }
 
@@ -241,37 +292,121 @@ export default function AssignmentViewerModal({
           <button onClick={onClose} aria-label="Close" className="text-2xl">×</button>
         </div>
         <div className="flex flex-1 overflow-hidden">
-          {/* Left side - PDF Preview */}
+          {/* Left side - File Preview */}
           <div className="flex-1 flex items-center justify-center bg-gray-50">
-            {selectedSubmission && selectedSubmission.file.mimetype === 'application/pdf' ? (
+            {selectedSubmission ? (
+              (() => {
+                const file = selectedSubmission.file
+                
+                // PDF Preview
+                if (file.mimetype === 'application/pdf') {
+                  return (
               <iframe
-                src={`${process.env.NEXT_PUBLIC_API_URL}/files/preview/${selectedSubmission.file.id}`}
+                      src={`${process.env.NEXT_PUBLIC_API_URL}/files/preview/${file.id}`}
                 title="PDF Preview"
                 className="w-full h-full border-0"
                 onError={() => console.error('Failed to load PDF preview')}
               />
-            ) : selectedSubmission ? (
+                  )
+                }
+                
+                // Image Preview
+                if (file.mimetype && file.mimetype.startsWith('image/')) {
+                  console.log('File MIME type:', file.mimetype, 'File:', file)
+                  const imageUrl = `/api/files/preview/${file.id}`
+                  console.log('Image URL:', imageUrl)
+                  return (
+                    <div className="w-full h-full flex items-center justify-center p-4">
+                      <img
+                        src={imageUrl}
+                        alt="File Preview"
+                        className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+                        onLoad={() => console.log('Image loaded successfully')}
+                        onError={(e) => {
+                          console.error('Failed to load image preview:', e)
+                          console.error('Image URL was:', imageUrl)
+                        }}
+                      />
+                    </div>
+                  )
+                }
+                
+                // Fallback: Check file extension for common image formats
+                const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg']
+                const fileExtension = file.filename.toLowerCase().substring(file.filename.lastIndexOf('.'))
+                if (imageExtensions.includes(fileExtension)) {
+                  console.log('File extension suggests image:', fileExtension, 'File:', file)
+                  const imageUrl = `/api/files/preview/${file.id}`
+                  return (
+                    <div className="w-full h-full flex items-center justify-center p-4">
+                      <img
+                        src={imageUrl}
+                        alt="File Preview"
+                        className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+                        onLoad={() => console.log('Image loaded successfully (fallback)')}
+                        onError={(e) => {
+                          console.error('Failed to load image preview (fallback):', e)
+                          console.error('Image URL was:', imageUrl)
+                        }}
+                      />
+                    </div>
+                  )
+                }
+                
+                // Other file types - show download option
+                return (
               <div className="p-4 text-center">
+                    <div className="mb-4">
+                      <div className="w-16 h-16 mx-auto bg-gray-200 rounded-full flex items-center justify-center mb-3">
+                        <svg className="w-8 h-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
                 <p className="text-gray-500 mb-2">Cannot preview this file type.</p>
+                      <p className="text-sm text-gray-400 mb-4">{file.filename}</p>
+                    </div>
                 <a
-                  href={`${process.env.NEXT_PUBLIC_API_URL}/files/download/${selectedSubmission.file.id}`}
+                      href={`${process.env.NEXT_PUBLIC_API_URL}/files/download/${file.id}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-600 underline"
+                      className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
                   Download File
                 </a>
               </div>
+                )
+              })()
             ) : loading ? (
-              <div className="p-4">Loading...</div>
+              <div className="p-4 text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-2"></div>
+                <p className="text-gray-500">Loading submission...</p>
+              </div>
             ) : error ? (
-              <div className="p-4 text-red-500">{error}</div>
+              <div className="p-4 text-center">
+                <div className="w-16 h-16 mx-auto bg-red-100 rounded-full flex items-center justify-center mb-3">
+                  <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-red-500 mb-2">Error loading submission</p>
+                <p className="text-sm text-gray-500">{error}</p>
+              </div>
             ) : (
-              <div className="p-4 text-gray-500">No submission to preview</div>
+              <div className="p-4 text-center">
+                <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <p className="text-gray-500">No submission to preview</p>
+              </div>
             )}
           </div>
           {/* Right side - Sidebar */}
-          <div className="w-80 border-l bg-gray-50 flex flex-col">
+          <div className="w-96 border-l bg-gray-50 flex flex-col">
             {/* Tab buttons */}
             <div className="flex border-b bg-white">
               {isTeacher && (
@@ -303,6 +438,39 @@ export default function AssignmentViewerModal({
             <div className="flex-1 overflow-y-auto p-4">
               {activeTab === 'grade' && isTeacher && (
                 <div className="space-y-4">
+                  {/* Rubric Viewer */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Rubric
+                    </label>
+                    <RubricViewer
+                      assignmentId={assignmentId}
+                      courseId={courseId}
+                      onScoreChange={(score) => {
+                        if (inputMode === 'raw') {
+                          handleScoreChange(score)
+                        } else {
+                          // Convert to percentage
+                          const percentage = assignment?.maxScore ? (score / assignment.maxScore) * 100 : 0
+                          handleScoreChange(percentage)
+                        }
+                      }}
+                      onFeedbackChange={(feedback) => handleGradeChange('comment', feedback)}
+                      onRubricSelectionsChange={(selections) => {
+                        setRubricSelections(selections)
+                        // Update grade with new rubric selections
+                        setGrade(prev => ({
+                          ...prev,
+                          rubricSelections: Array.from(selections)
+                        }))
+                      }}
+                      currentScore={grade.score}
+                      currentFeedback={grade.comment || ''}
+                      initialSelections={rubricSelections}
+                    />
+                  </div>
+
+                  <div className="border-t border-gray-200 pt-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Grade Input
@@ -330,7 +498,7 @@ export default function AssignmentViewerModal({
                       </button>
                     </div>
                   </div>
-                  <div>
+                    <div className="mt-3">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Score
                     </label>
@@ -349,7 +517,7 @@ export default function AssignmentViewerModal({
                       </span>
                     </div>
                   </div>
-                  <div>
+                    <div className="mt-3">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Status
                     </label>
@@ -362,7 +530,7 @@ export default function AssignmentViewerModal({
                       <option value="LATE">Late</option>
                     </select>
                   </div>
-                  <div>
+                    <div className="mt-3">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Feedback
                     </label>
@@ -373,21 +541,29 @@ export default function AssignmentViewerModal({
                       placeholder="Enter feedback..."
                     />
                   </div>
-                  <div className="space-y-2">
-                    <button
-                      onClick={handleSaveGrade}
-                      disabled={saving}
-                      className="w-full bg-purple-600 text-white py-2 px-4 rounded hover:bg-purple-700 disabled:opacity-50"
-                    >
-                      {saving ? 'Saving...' : 'Save Grade'}
-                    </button>
-                    <button
-                      onClick={handlePublishGrade}
-                      disabled={saving || !canPublish}
-                      className="w-full bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 disabled:opacity-50"
-                    >
-                      {saving ? 'Publishing...' : grade.isPublished && !hasUnsavedChanges ? 'Already Published' : 'Publish Grade'}
-                    </button>
+                    <div className="space-y-2 mt-4">
+                      <button
+                        onClick={handleAIGrade}
+                        disabled={aiGrading}
+                        className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {aiGrading ? 'AI Grading...' : 'Grade with AI'}
+                      </button>
+                      <button
+                        onClick={handleSaveGrade}
+                        disabled={saving}
+                        className="w-full bg-purple-600 text-white py-2 px-4 rounded hover:bg-purple-700 disabled:opacity-50"
+                      >
+                        {saving ? 'Saving...' : 'Save Grade'}
+                      </button>
+                      <button
+                        onClick={handlePublishGrade}
+                        disabled={saving || !canPublish}
+                        className="w-full bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 disabled:opacity-50"
+                      >
+                        {saving ? 'Publishing...' : grade.isPublished && !hasUnsavedChanges ? 'Already Published' : 'Publish Grade'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

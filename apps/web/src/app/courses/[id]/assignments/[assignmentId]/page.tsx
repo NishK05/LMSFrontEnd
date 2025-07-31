@@ -11,6 +11,8 @@ import { saveAssignment } from '../../../../gradebook/api'
 import AssignmentForm from '../../../../gradebook/Teacher/AssignmentForm'
 import FileUpload from '@/components/files/FileUpload'
 import AssignmentViewerModal from '@/components/assignments/AssignmentViewerModal'
+import { RubricPanel } from './RubricPanel'
+import { StudentRubricViewer } from '@/components/assignments/StudentRubricViewer'
 import { Trash2, Edit } from 'lucide-react'
 
 interface Student {
@@ -26,6 +28,9 @@ interface Grade {
   status: string
   comment?: string
   isPublished: boolean
+  rubricSelections?: string[] // Array of checked rubric item IDs
+  createdAt?: string
+  updatedAt?: string
 }
 
 interface Submission {
@@ -125,6 +130,22 @@ function StudentGradeDisplay({
           </label>
           <div className="text-sm text-gray-700 bg-gray-50 p-2 rounded">
             {grade.comment}
+          </div>
+        </div>
+      )}
+
+      {/* Show rubric breakdown if grade is published and has rubric selections */}
+      {grade.isPublished && grade.rubricSelections && grade.rubricSelections.length > 0 && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Grading Breakdown
+          </label>
+          <div className="border border-gray-200 rounded-lg bg-white">
+            <StudentRubricViewer
+              assignmentId={assignmentId}
+              courseId={courseId}
+              rubricSelections={grade.rubricSelections}
+            />
           </div>
         </div>
       )}
@@ -365,8 +386,68 @@ export default function AssignmentSplashPage({ params }: { params: { id: string;
   // Check if there are any grades that are saved but not published
   const hasUnpublishedGrades = grades.filter(g => g.assignmentId === params.assignmentId).some(g => !g.isPublished)
 
+  // Check if there are any submissions
+  const hasSubmissions = submissions.length > 0
+
   // Publish button should be active if there are unpublished grades OR unsaved changes
   const canPublish = hasUnpublishedGrades || hasUnsavedChanges
+
+  // AI Grade All function
+  const handleAIGradeAll = async () => {
+    setGradeSaving(true)
+    setSaveSuccess(false)
+    setPublishSuccess(false)
+    try {
+      const res = await fetch(`/api/gradebook/${params.id}/assignments/${params.assignmentId}/ai-grade-bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const data = await res.json()
+      if (data.success) {
+        // Update grades with AI results
+        const aiResults = data.data
+        setGrades(gs => {
+          const updated = [...gs]
+          aiResults.forEach((result: any) => {
+            if (!result.error) {
+              const idx = updated.findIndex(g => g.assignmentId === params.assignmentId && g.studentId === result.studentId)
+              if (idx !== -1) {
+                updated[idx] = {
+                  ...updated[idx],
+                  score: result.score,
+                  comment: result.feedback,
+                  rubricSelections: result.rubricSelections,
+                  isPublished: false // AI grades are saved as drafts
+                }
+              } else {
+                // Create new grade
+                updated.push({
+                  id: '',
+                  assignmentId: params.assignmentId,
+                  studentId: result.studentId,
+                  score: result.score,
+                  comment: result.feedback,
+                  status: 'ON_TIME',
+                  rubricSelections: result.rubricSelections,
+                  isPublished: false,
+                  createdAt: '',
+                  updatedAt: ''
+                })
+              }
+            }
+          })
+          return updated
+        })
+        alert('AI grading completed! Review and save grades.')
+      } else {
+        throw new Error(data.error)
+      }
+    } catch (e) {
+      console.error('Failed to grade with AI:', e)
+      alert('Failed to grade with AI')
+    }
+    setGradeSaving(false)
+  }
 
   useEffect(() => {
     // On load, set prevGradesRef to loaded grades
@@ -406,7 +487,7 @@ export default function AssignmentSplashPage({ params }: { params: { id: string;
   // Add a function to refresh files after upload
   const refreshFiles = async () => {
     try {
-      const filesRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/files/course/${params.id}`)
+      const filesRes = await fetch(`/api/files/course/${params.id}`)
       const filesData = await filesRes.json()
       setFiles(filesData.data?.files || [])
     } catch {}
@@ -441,7 +522,7 @@ export default function AssignmentSplashPage({ params }: { params: { id: string;
 
   const handleDownload = async (fileId: string) => {
     try {
-      const fileRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/files/download/${fileId}`)
+      const fileRes = await fetch(`/api/files/download/${fileId}`)
       if (fileRes.ok) {
         const blob = await fileRes.blob()
         const url = window.URL.createObjectURL(blob)
@@ -461,11 +542,11 @@ export default function AssignmentSplashPage({ params }: { params: { id: string;
   }
 
   const handleDeleteFile = async (fileId: string) => {
-    if (!window.confirm('Are you sure you want to delete this file?')) {
+    if (!window.confirm('Are you want to delete this file?')) {
       return
     }
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/files/delete/${fileId}`, { method: 'DELETE' })
+      await fetch(`/api/files/delete/${fileId}`, { method: 'DELETE' })
       refreshFiles()
       alert('File deleted successfully')
     } catch (e) {
@@ -480,7 +561,7 @@ export default function AssignmentSplashPage({ params }: { params: { id: string;
       return
     }
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/files/rename/${editingFile.id}`, {
+      await fetch(`/api/files/rename/${editingFile.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newName }),
@@ -606,9 +687,13 @@ export default function AssignmentSplashPage({ params }: { params: { id: string;
             )}
           </div>
 
+          {/* Main Content Area */}
+          <div className="flex gap-6">
+            {/* Left Column - Files and Grades */}
+            <div className="flex-1 space-y-6">
           {/* File Upload & List */}
           {(isTeacher || isAdmin) && (
-            <div className="bg-white/80 rounded-2xl shadow-lg border border-purple-100 p-6 mb-6">
+                <div className="bg-white/80 rounded-2xl shadow-lg border border-purple-100 p-6">
               <h3 className="text-lg font-semibold text-purple-900 mb-2">Files</h3>
               <FileUpload
                 courseId={course.id}
@@ -658,7 +743,145 @@ export default function AssignmentSplashPage({ params }: { params: { id: string;
 
           {/* Teacher Student Grades Table */}
           {(isTeacher || isAdmin) && (
-            <div className="bg-white/80 rounded-2xl shadow-lg border border-purple-100 p-6 mb-6">
+                <div className="bg-white/80 rounded-2xl shadow-lg border border-purple-100 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-4">
+                      <h3 className="text-lg font-semibold text-purple-900">Student Grades</h3>
+                      <div className="flex items-center gap-2">
+                        <button
+                          className={`bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50`}
+                          onClick={handleAIGradeAll}
+                          disabled={gradeSaving || !hasSubmissions}
+                        >
+                          {gradeSaving ? 'Grading...' : 'Grade All with AI'}
+                        </button>
+                        <button
+                          className={`bg-purple-600 text-white px-4 py-2 rounded disabled:opacity-50`}
+                          onClick={handleSaveGrades}
+                          disabled={gradeSaving || !hasUnsavedChanges}
+                        >
+                          {gradeSaving ? 'Saving...' : 'Save Grades'}
+                        </button>
+                        <button
+                          className={`bg-green-600 text-white px-4 py-2 rounded disabled:opacity-50`}
+                          onClick={handlePublishGrades}
+                          disabled={gradeSaving || !canPublish}
+                        >
+                          {gradeSaving ? 'Publishing...' : 'Publish Grades'}
+                        </button>
+                        {saveSuccess && <span className="text-green-600 font-semibold">Grades saved!</span>}
+                        {publishSuccess && <span className="text-green-600 font-semibold">Grades published!</span>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-purple-700">Grade Input:</span>
+                      <div className="flex border rounded overflow-hidden">
+                        <button
+                          className={`px-3 py-1 text-sm font-medium transition-colors ${
+                            inputMode === 'raw'
+                              ? 'bg-purple-600 text-white'
+                              : 'bg-white text-purple-700 hover:bg-purple-50'
+                          }`}
+                          onClick={() => setInputMode('raw')}
+                        >
+                          Raw
+                        </button>
+                        <button
+                          className={`px-3 py-1 text-sm font-medium transition-colors ${
+                            inputMode === 'percent'
+                              ? 'bg-purple-600 text-white'
+                              : 'bg-white text-purple-700 hover:bg-purple-50'
+                          }`}
+                          onClick={() => setInputMode('percent')}
+                        >
+                          Percent
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="bg-purple-100 border-b border-purple-200">
+                          <th className="text-left py-3 px-4 font-semibold text-purple-900">Student Name</th>
+                          <th className="text-left py-3 px-4 font-semibold text-purple-900">Grade</th>
+                          <th className="text-left py-3 px-4 font-semibold text-purple-900">Submission</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {students.map((student) => {
+                          const grade = grades.find(g => g.assignmentId === params.assignmentId && g.studentId === student.id)
+                          const submission = submissions.find(s => s.assignmentId === params.assignmentId && s.studentId === student.id)
+                          const hasSubmission = submission !== undefined
+                          
+                          const getGradeValue = (grade: Grade) => {
+                            if (inputMode === 'percent' && assignment?.maxScore) {
+                              return Math.round((grade.score / assignment.maxScore) * 100)
+                            } else {
+                              return grade.score
+                            }
+                          }
+
+                          return (
+                            <tr key={student.id} className="border-b border-purple-100 hover:bg-purple-50">
+                              <td className="py-3 px-4">
+                                <span className="font-medium text-purple-900">{student.name}</span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={inputMode === 'percent' ? 100 : assignment?.maxScore || 100}
+                                    value={grade ? getGradeValue(grade) : ''}
+                                    onChange={e => handleGradeChange(student.id, e.target.value === '' ? '' : Number(e.target.value))}
+                                    className="w-16 border rounded px-1 text-sm"
+                                    placeholder={inputMode === 'percent' ? '%' : '0'}
+                                  />
+                                  <span className="text-xs text-gray-500">
+                                    {inputMode === 'percent' ? '%' : `/ ${assignment?.maxScore || 100}`}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4">
+                                {hasSubmission ? (
+                                  <button
+                                    className="text-blue-600 hover:text-blue-800 underline font-medium"
+                                    onClick={() => setShowAssignmentModal({ studentId: student.id, studentName: student.name })}
+                                  >
+                                    {student.name} - {assignment.name}
+                                  </button>
+                                ) : (
+                                  <span className="text-red-500 font-medium">No Submission</span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right Column - Rubric Panel */}
+            {(isTeacher || isAdmin) && (
+              <div className="w-80">
+                <RubricPanel 
+                  courseId={course.id}
+                  assignmentId={assignment.id}
+                  isTeacher={isTeacher}
+                  assignmentMaxScore={assignment.maxScore}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Student View - Files and Submission */}
+          {!(isTeacher || isAdmin) && (
+                <div className="bg-white/80 rounded-2xl shadow-lg border border-purple-100 p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-4">
                   <h3 className="text-lg font-semibold text-purple-900">Student Grades</h3>
@@ -880,25 +1103,101 @@ export default function AssignmentSplashPage({ params }: { params: { id: string;
                       )}
                     </div>
                     
-                    {/* PDF Preview */}
+                    {/* File Preview */}
                     <div className="flex-1 flex items-center justify-center">
-                      {(selectedSubmission || studentSubmission)?.file?.mimetype === 'application/pdf' ? (
+                      {(selectedSubmission || studentSubmission) ? (
+                        (() => {
+                          const file = (selectedSubmission || studentSubmission).file
+                          
+                          // PDF Preview
+                          if (file.mimetype === 'application/pdf') {
+                            return (
                         <iframe
-                          src={`${process.env.NEXT_PUBLIC_API_URL}/files/preview/${(selectedSubmission || studentSubmission).fileId}`}
-                          title="Submission Preview"
+                                src={`/api/files/preview/${file.id}`}
+                                title="PDF Preview"
                           className="w-full h-full border-0"
+                                onError={() => console.error('Failed to load PDF preview')}
                         />
-                      ) : (
+                            )
+                          }
+                          
+                          // Image Preview
+                          if (file.mimetype && file.mimetype.startsWith('image/')) {
+                            console.log('File MIME type:', file.mimetype, 'File:', file)
+                            const imageUrl = `/api/files/preview/${file.id}`
+                            console.log('Image URL:', imageUrl)
+                            return (
+                              <div className="w-full h-full flex items-center justify-center p-4">
+                                <img
+                                  src={imageUrl}
+                                  alt="File Preview"
+                                  className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+                                  onLoad={() => console.log('Image loaded successfully')}
+                                  onError={(e) => {
+                                    console.error('Failed to load image preview:', e)
+                                    console.error('Image URL was:', imageUrl)
+                                  }}
+                                />
+                              </div>
+                            )
+                          }
+                          
+                          // Fallback: Check file extension for common image formats
+                          const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg']
+                          const fileExtension = file.filename.toLowerCase().substring(file.filename.lastIndexOf('.'))
+                          if (imageExtensions.includes(fileExtension)) {
+                            console.log('File extension suggests image:', fileExtension, 'File:', file)
+                            const imageUrl = `/api/files/preview/${file.id}`
+                            return (
+                              <div className="w-full h-full flex items-center justify-center p-4">
+                                <img
+                                  src={imageUrl}
+                                  alt="File Preview"
+                                  className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+                                  onLoad={() => console.log('Image loaded successfully (fallback)')}
+                                  onError={(e) => {
+                                    console.error('Failed to load image preview (fallback):', e)
+                                    console.error('Image URL was:', imageUrl)
+                                  }}
+                                />
+                              </div>
+                            )
+                          }
+                          
+                          // Other file types - show download option
+                          return (
                         <div className="p-4 text-center">
+                              <div className="mb-4">
+                                <div className="w-16 h-16 mx-auto bg-gray-200 rounded-full flex items-center justify-center mb-3">
+                                  <svg className="w-8 h-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                </div>
                           <p className="text-gray-500 mb-2">Cannot preview this file type.</p>
+                                <p className="text-sm text-gray-400 mb-4">{file.filename}</p>
+                              </div>
                           <a
-                            href={`${process.env.NEXT_PUBLIC_API_URL}/files/download/${(selectedSubmission || studentSubmission).fileId}`}
+                                href={`/api/files/download/${file.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-600 underline"
+                                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                           >
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
                             Download File
                           </a>
+                            </div>
+                          )
+                        })()
+                      ) : (
+                        <div className="p-4 text-center">
+                          <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          </div>
+                          <p className="text-gray-500">No submission to preview</p>
                         </div>
                       )}
                     </div>
@@ -1007,7 +1306,7 @@ export default function AssignmentSplashPage({ params }: { params: { id: string;
                                         {isSelected ? 'Viewing' : 'View'}
                                       </button>
                                       <a
-                                        href={`${process.env.NEXT_PUBLIC_API_URL}/files/download/${submission.file.id}`}
+                                        href={`/api/files/download/${submission.file.id}`}
                                         download
                                         className="px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors inline-block"
                                         onClick={(e) => e.stopPropagation()}

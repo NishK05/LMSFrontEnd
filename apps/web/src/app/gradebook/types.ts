@@ -44,6 +44,7 @@ export interface Grade {
   status: GradeStatus
   comment?: string | null
   isPublished: boolean
+  rubricSelections?: string[] // Array of checked rubric item IDs
   createdAt: string
   updatedAt: string
 }

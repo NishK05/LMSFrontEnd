@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { GradebookCourse, Assignment, GradeSection, Grade, GradeStatus } from '../types'
 import { getAssignments, getGrades, getSections, getLatePenalty, getLetterGrades, getRounding } from '../api'
 import { calculateFinalGrade } from '@/lib/gradebook'
+import { StudentRubricViewer } from '@/components/assignments/StudentRubricViewer'
 
 export function MyGrades({ course }: { course: GradebookCourse }) {
   const router = useRouter()
@@ -339,6 +340,39 @@ export function MyGrades({ course }: { course: GradebookCourse }) {
               })}
             </tbody>
           </table>
+
+          {/* Rubric Breakdowns for Published Grades */}
+          {!whatIfMode && (
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold text-purple-800 mb-4">Grading Breakdowns</h3>
+              <div className="space-y-4">
+                {displayAssignments.map(assignment => {
+                  const grade = displayGrades.find(g => g.assignmentId === assignment.id && g.studentId === studentId)
+                  
+                  // Only show rubric breakdown for published grades with rubric selections
+                  if (!grade || !grade.isPublished || !grade.rubricSelections || grade.rubricSelections.length === 0) {
+                    return null
+                  }
+
+                  return (
+                    <div key={assignment.id} className="border border-purple-200 rounded-lg bg-white p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-medium text-purple-900">{assignment.name}</h4>
+                        <span className="text-sm text-purple-600">
+                          Score: {grade.score} / {assignment.maxScore}
+                        </span>
+                      </div>
+                      <StudentRubricViewer
+                        assignmentId={assignment.id}
+                        courseId={course.id}
+                        rubricSelections={grade.rubricSelections}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
